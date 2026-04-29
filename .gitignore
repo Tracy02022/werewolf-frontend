@@ -1,19 +1,48 @@
-# dependencies
+# =========================
+# Node / Next.js
+# =========================
 node_modules/
-
-# next build
 .next/
 out/
+dist/
+build/
 
-# env files
-.env.local
+# =========================
+# Env
+# =========================
 .env
+.env.local
+.env.development
+.env.production
 
-# logs
+# =========================
+# Logs
+# =========================
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# mac
+# =========================
+# System files
+# =========================
 .DS_Store
-.idea
+Thumbs.db
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Capacitor / iOS
+# =========================
+ios/Pods/
+ios/build/
+DerivedData/
+
+# =========================
+# Misc
+# =========================
+*.log
