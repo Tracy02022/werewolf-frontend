@@ -9,19 +9,19 @@
     "@capacitor/cli": "latest",
     "@capacitor/core": "latest",
     "@capacitor/ios": "latest",
-    "lucide-react": "latest",
+    "lucide-react": "^1.14.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
     "autoprefixer": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "typescript": "latest",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "typescript": "latest"
   }
 }
