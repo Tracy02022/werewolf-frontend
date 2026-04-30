@@ -5,3 +5,5 @@ body { margin: 0; background: #07040d; color: white; }
 .safe-top { padding-top: max(2.5rem, env(safe-area-inset-top)); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 input, select { color: white; }
+
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
