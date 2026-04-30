@@ -49,6 +49,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
+  const [showNextPhaseConfirm, setShowNextPhaseConfirm] = useState(false);
   const [hasPreviousGame, setHasPreviousGame] = useState(false);
 
   const roleNameMap = useMemo(() => {
@@ -191,6 +192,17 @@ export default function HomePage() {
     setError('');
   };
 
+  const confirmNextPhase = () => {
+    if (!room) return;
+    setShowNextPhaseConfirm(true);
+  };
+
+  const goNextPhase = () => {
+    if (!room) return;
+    setShowNextPhaseConfirm(false);
+    run(() => api.nextPhase(room.roomCode, myPlayerId));
+  };
+
   const rejoinPreviousGame = async () => {
     const savedRoomCode = localStorage.getItem('roomCode') || '';
     const savedPlayerId = localStorage.getItem('playerId') || '';
@@ -255,9 +267,10 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="grid two">
-          <section className="card">
-            <h2 className="cardTitle">创建房间</h2>
+        {!room && (
+          <div className="grid two">
+            <section className="card">
+              <h2 className="cardTitle">创建房间</h2>
 
             <label className="label">你的昵称</label>
             <input className="input" value={hostName} onChange={(e) => setHostName(e.target.value)} placeholder="例如 Tracy" />
@@ -343,11 +356,23 @@ export default function HomePage() {
               <h2>{myRole ? roleNameMap[myRole] || myRole : '游戏开始后可查看'}</h2>
               <p className="small">每个玩家只能通过自己的 playerId 查看自己的身份。</p>
             </div>
-          </section>
-        </div>
+            </section>
+          </div>
+        )}
 
         {room && (
           <section className="card" style={{ marginTop: 18 }}>
+            <div className="inRoomNotice">
+              <div>
+                <div className="small">你已进入房间</div>
+                <div className="roomCodeInline">{room.roomCode}</div>
+              </div>
+              <div className="myRolePill">
+                <span>我的身份</span>
+                <strong>{myRole ? roleNameMap[myRole] || myRole : room.phase === 'WAITING' ? '等待发牌' : '加载中...'}</strong>
+              </div>
+            </div>
+
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <div>
                 <h2 className="cardTitle">房间 {room.roomCode}</h2>
@@ -359,7 +384,7 @@ export default function HomePage() {
                 <button className="btn danger" onClick={leaveRoom}>退出房间</button>
                 {isHost && <button className="btn" disabled={loading || room.phase !== 'WAITING'} onClick={() => run(() => api.fillBots(room.roomCode))}>Bot补满</button>}
                 {isHost && <button className="btn green" disabled={loading || !roomIsFull || room.phase !== 'WAITING'} onClick={() => run(() => api.startGame(room.roomCode, myPlayerId))}>开始游戏</button>}
-                {isHost && <button className="btn pink" disabled={loading || room.phase === 'WAITING' || room.phase === 'FINISHED'} onClick={() => run(() => api.nextPhase(room.roomCode, myPlayerId))}>下一阶段</button>}
+                {isHost && <button className="btn pink" disabled={loading || room.phase === 'WAITING' || room.phase === 'FINISHED'} onClick={confirmNextPhase}>下一阶段</button>}
               </div>
             </div>
 
@@ -376,6 +401,24 @@ export default function HomePage() {
           </section>
         )}
       </div>
+
+      {showNextPhaseConfirm && room && (
+        <div className="modalOverlay" role="dialog" aria-modal="true">
+          <div className="modalCard">
+            <h2>确认进入下一阶段？</h2>
+            <p>当前阶段是「{phaseNameMap[room.phase] || room.phase}」。确定后，房间会进入下一阶段。</p>
+            <div className="phasePreview">
+              <span>当前：{phaseNameMap[room.phase] || room.phase}</span>
+              <span>→</span>
+              <span>下一阶段</span>
+            </div>
+            <div className="modalActions">
+              <button className="btn" onClick={() => setShowNextPhaseConfirm(false)}>取消</button>
+              <button className="btn pink modalPrimary" disabled={loading} onClick={goNextPhase}>确定进入</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCreateConfirm && (
         <div className="modalOverlay" role="dialog" aria-modal="true">
