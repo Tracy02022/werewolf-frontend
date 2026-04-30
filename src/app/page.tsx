@@ -257,7 +257,7 @@ export default function HomePage() {
               <input
                 value={roomCodeInput}
                 onChange={(e) => setRoomCodeInput(e.target.value)}
-                placeholder="输入 6 位房间号"
+                placeholder="输入 6 为房间号"
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none"
               />
               <label className="mt-4 block text-sm text-purple-100/80">你的昵称</label>
@@ -347,11 +347,21 @@ export default function HomePage() {
                       <h3 className="mb-2 font-bold text-purple-200">{teamNameMap[team]}</h3>
                       <div className="grid max-h-[340px] gap-2 overflow-y-auto pr-1">
                         {(rolesByTeam[team] || []).map((role) => (
-                          <div key={role.id} className="rounded-2xl bg-white/10 p-3">
+                          <div
+                            key={role.id}
+                            tabIndex={0}
+                            title={role.description}
+                            className="group rounded-2xl bg-white/10 p-3 outline-none transition hover:bg-white/15 focus:bg-white/15"
+                          >
                             <div className="flex items-center justify-between gap-3">
-                              <div>
+                              <div className="min-w-0">
                                 <div className="font-semibold">{role.name}</div>
-                                <div className="mt-1 line-clamp-2 text-xs text-purple-100/60">{role.description}</div>
+                                <div className="mt-1 line-clamp-2 text-xs leading-5 text-purple-100/60 transition-all group-hover:line-clamp-none group-hover:text-purple-50 group-focus:line-clamp-none group-focus:text-purple-50">
+                                  {role.description}
+                                </div>
+                                <div className="mt-1 hidden text-[11px] text-purple-200/80 group-hover:block group-focus:block">
+                                  技能说明已展开
+                                </div>
                               </div>
                               <div className="flex shrink-0 items-center gap-2">
                                 <button onClick={() => updateRole(role.id, -1)} className="h-8 w-8 rounded-full bg-white/15">-</button>
@@ -460,9 +470,16 @@ export default function HomePage() {
               {myRoleInfo?.name || '未获取到身份'}
             </div>
             {myRoleInfo && (
-              <div className="mt-4 rounded-2xl bg-gray-100 p-4 text-left text-sm leading-6 text-gray-700">
+              <div
+                tabIndex={0}
+                title={myRoleInfo.description}
+                className="group mt-4 rounded-2xl bg-gray-100 p-4 text-left text-sm leading-6 text-gray-700 outline-none"
+              >
                 <div className="font-bold">技能说明</div>
-                <div className="mt-1">{myRoleInfo.description}</div>
+                <div className="mt-1 line-clamp-2 text-gray-600 transition-all group-hover:line-clamp-none group-focus:line-clamp-none">
+                  {myRoleInfo.description}
+                </div>
+                <div className="mt-2 text-xs text-gray-400">悬停或点按此区域可查看完整技能说明</div>
               </div>
             )}
             <button onClick={() => setShowRole(false)} className="mt-6 w-full rounded-2xl bg-gray-900 px-4 py-3 font-bold text-white">
