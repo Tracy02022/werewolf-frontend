@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export', // 关键：生成静态文件
+  output: 'export',
   images: {
-    unoptimized: true,
-  },
+    unoptimized: true
+  }
 };
 
 module.exports = nextConfig;

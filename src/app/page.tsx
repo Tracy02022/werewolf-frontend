@@ -11,6 +11,14 @@ const phaseNameMap: Record<string, string> = {
   FINISHED: '游戏结束'
 };
 
+const phaseHintMap: Record<string, string> = {
+  WAITING: '分享房间号，等待其他玩家加入。',
+  NIGHT: '天黑请闭眼，夜晚角色依次行动。',
+  DAY_DISCUSSION: '天亮了，请按座位顺序发言。',
+  VOTING: '进入投票阶段，请投出你怀疑的玩家。',
+  FINISHED: '本局游戏已结束。'
+};
+
 const defaultCustomRoles: Record<number, Record<Role, number>> = {
   10: { WEREWOLF: 3, VILLAGER: 4, SEER: 1, WITCH: 1, HUNTER: 1 },
   11: { WEREWOLF: 3, VILLAGER: 4, SEER: 1, WITCH: 1, HUNTER: 1, GUARD: 1 },
@@ -40,6 +48,8 @@ export default function HomePage() {
   const [myRole, setMyRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showCreateConfirm, setShowCreateConfirm] = useState(false);
+  const [hasPreviousGame, setHasPreviousGame] = useState(false);
 
   const roleNameMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -62,6 +72,7 @@ export default function HomePage() {
   const customTotal = totalRoles(customRoles);
   const roomIsFull = !!room && room.players.length === room.playerCount;
   const isHost = !!room && !!myPlayerId && room.hostPlayerId === myPlayerId;
+  const currentPhase = room?.phase || 'WAITING';
 
   useEffect(() => {
     Promise.all([api.getRoles(), api.getBoards()])
@@ -75,6 +86,7 @@ export default function HomePage() {
 
     const savedRoomCode = localStorage.getItem('roomCode') || '';
     const savedPlayerId = localStorage.getItem('playerId') || '';
+    setHasPreviousGame(Boolean(savedRoomCode && savedPlayerId));
     if (savedRoomCode && savedPlayerId) {
       setMyPlayerId(savedPlayerId);
       setJoinRoomCode(savedRoomCode);
@@ -122,23 +134,34 @@ export default function HomePage() {
       setMyPlayerId(me.id);
       localStorage.setItem('playerId', me.id);
       localStorage.setItem('roomCode', updated.roomCode);
+      setHasPreviousGame(true);
     }
   };
 
-  const createRoom = () => {
+  const validateCreateRoom = () => {
     if (!hostName.trim()) {
       setError('请先输入你的昵称');
-      return;
+      return false;
     }
     if (createMode === 'classic' && !selectedBoardId) {
       setError('当前人数没有可选经典板子，请切换到自选角色模式');
-      return;
+      return false;
     }
     if (createMode === 'custom' && customTotal !== playerCount) {
       setError(`自选角色数量必须等于玩家人数：当前 ${customTotal}/${playerCount}`);
-      return;
+      return false;
     }
+    setError('');
+    return true;
+  };
 
+  const askCreateRoom = () => {
+    if (!validateCreateRoom()) return;
+    setShowCreateConfirm(true);
+  };
+
+  const createRoom = () => {
+    setShowCreateConfirm(false);
     run(
       () => api.createRoom({
         playerCount,
@@ -162,6 +185,25 @@ export default function HomePage() {
     );
   };
 
+  const leaveRoom = () => {
+    setRoom(null);
+    setMyRole(null);
+    setError('');
+  };
+
+  const rejoinPreviousGame = async () => {
+    const savedRoomCode = localStorage.getItem('roomCode') || '';
+    const savedPlayerId = localStorage.getItem('playerId') || '';
+    if (!savedRoomCode || !savedPlayerId) {
+      setError('没有找到上一局游戏记录');
+      setHasPreviousGame(false);
+      return;
+    }
+    setMyPlayerId(savedPlayerId);
+    setJoinRoomCode(savedRoomCode);
+    await run(() => api.getRoom(savedRoomCode));
+  };
+
   const updateRoleCount = (role: Role, delta: number) => {
     setCustomRoles((prev) => {
       const next = { ...prev };
@@ -173,7 +215,7 @@ export default function HomePage() {
   };
 
   const summary = (roleMap: Record<Role, number>) =>
-    Object.entries(roleMap)
+    Object.entries(roleMap || {})
       .filter(([, count]) => count > 0)
       .map(([role, count]) => `${roleNameMap[role] || role}×${count}`)
       .join(' / ');
@@ -187,14 +229,31 @@ export default function HomePage() {
             <h1>狼人杀 App</h1>
             <p>12人保留经典板子；10-16人支持自选角色。创建房间后分享房间号，其他玩家输入房间号加入。</p>
           </div>
-          <div className="card">
+          <div className="card roomStatusCard">
             <div className="small">当前房间</div>
             <div className="roomCode">{room?.roomCode || '------'}</div>
             <div className="small">{room?.boardName || '尚未创建 / 加入'}</div>
+            {hasPreviousGame && !room && (
+              <button className="btn miniBtn" disabled={loading} onClick={rejoinPreviousGame}>返回上局游戏</button>
+            )}
           </div>
         </header>
 
         {error && <div className="warning">{error}</div>}
+
+        <div className={`phaseBanner ${currentPhase}`}>
+          <div className="phaseIcon">
+            {currentPhase === 'WAITING' && '⏳'}
+            {currentPhase === 'NIGHT' && '🌙'}
+            {currentPhase === 'DAY_DISCUSSION' && '☀️'}
+            {currentPhase === 'VOTING' && '🗳️'}
+            {currentPhase === 'FINISHED' && '🏁'}
+          </div>
+          <div>
+            <div className="phaseTitle">{phaseNameMap[currentPhase] || currentPhase}</div>
+            <div className="phaseHint">{phaseHintMap[currentPhase] || ''}</div>
+          </div>
+        </div>
 
         <div className="grid two">
           <section className="card">
@@ -239,7 +298,7 @@ export default function HomePage() {
             {createMode === 'custom' && (
               <div style={{ marginTop: 14 }}>
                 <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <strong>当前角色数量：{customTotal}/{playerCount}</strong>
+                  <strong className={customTotal === playerCount ? 'countOk' : 'countWarning'}>当前角色数量：{customTotal}/{playerCount}</strong>
                   <button className="btn" onClick={() => setCustomRoles(defaultCustomRoles[playerCount] || {})}>一键推荐</button>
                 </div>
                 {Object.entries(roleGroups).map(([groupName, groupRoles]) => (
@@ -262,7 +321,7 @@ export default function HomePage() {
               </div>
             )}
 
-            <button className="btn primary" disabled={loading} onClick={createRoom}>创建房间</button>
+            <button className="btn primary" disabled={loading} onClick={askCreateRoom}>创建房间</button>
           </section>
 
           <section className="card">
@@ -272,6 +331,12 @@ export default function HomePage() {
             <label className="label">你的昵称</label>
             <input className="input" value={joinName} onChange={(e) => setJoinName(e.target.value)} placeholder="例如 Player2" />
             <button className="btn blue" style={{ width: '100%', marginTop: 16 }} disabled={loading} onClick={joinRoom}>加入房间</button>
+
+            {hasPreviousGame && (
+              <button className="btn" style={{ width: '100%', marginTop: 12 }} disabled={loading} onClick={rejoinPreviousGame}>
+                返回上局游戏
+              </button>
+            )}
 
             <div className="roleCard">
               <div className="small">我的身份</div>
@@ -286,11 +351,12 @@ export default function HomePage() {
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <div>
                 <h2 className="cardTitle">房间 {room.roomCode}</h2>
-                <p>{room.boardName} · {room.players.length}/{room.playerCount} · {phaseNameMap[room.phase] || room.phase} · 第 {room.round} 轮</p>
+                <p>{room.boardName} · {room.players.length}/{room.playerCount} · 第 {room.round} 轮</p>
                 <p className="summary">配置：{summary(room.customRoles)}</p>
               </div>
               <div className="row">
                 <button className="btn" onClick={() => run(() => api.getRoom(room.roomCode))}>刷新</button>
+                <button className="btn danger" onClick={leaveRoom}>退出房间</button>
                 {isHost && <button className="btn" disabled={loading || room.phase !== 'WAITING'} onClick={() => run(() => api.fillBots(room.roomCode))}>Bot补满</button>}
                 {isHost && <button className="btn green" disabled={loading || !roomIsFull || room.phase !== 'WAITING'} onClick={() => run(() => api.startGame(room.roomCode, myPlayerId))}>开始游戏</button>}
                 {isHost && <button className="btn pink" disabled={loading || room.phase === 'WAITING' || room.phase === 'FINISHED'} onClick={() => run(() => api.nextPhase(room.roomCode, myPlayerId))}>下一阶段</button>}
@@ -310,6 +376,22 @@ export default function HomePage() {
           </section>
         )}
       </div>
+
+      {showCreateConfirm && (
+        <div className="modalOverlay" role="dialog" aria-modal="true">
+          <div className="modalCard">
+            <h2>确认创建房间？</h2>
+            <p>
+              将创建 {playerCount} 人局，模式为「{createMode === 'classic' ? '经典板子' : '自选角色'}」。
+              创建成功后会生成房间号，你可以分享给其他玩家加入。
+            </p>
+            <div className="modalActions">
+              <button className="btn" onClick={() => setShowCreateConfirm(false)}>取消</button>
+              <button className="btn primary modalPrimary" disabled={loading} onClick={createRoom}>确定创建</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
