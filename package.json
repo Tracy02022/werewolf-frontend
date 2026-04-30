@@ -1,4 +1,7 @@
 {
+  "name": "werewolf-frontend",
+  "version": "1.0.1",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -16,12 +19,12 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
     "autoprefixer": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "typescript": "latest",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "typescript": "latest"
   }
 }
