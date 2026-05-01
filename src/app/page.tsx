@@ -72,6 +72,8 @@ export default function HomePage() {
   const [selectedBoardId, setSelectedBoardId] = useState('');
   const [customRoles, setCustomRoles] = useState<Record<string, number>>(buildDefaultCustomRoles(12));
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [teamFilter, setTeamFilter] = useState<'ALL' | 'WOLF' | 'GOOD' | 'THIRD_PARTY' | 'OTHER'>('ALL');
   const [hostName, setHostName] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [roomCodeInput, setRoomCodeInput] = useState('');
@@ -128,6 +130,9 @@ export default function HomePage() {
           if (playerCount !== 12 && mode === 'BOARD') setMode('CUSTOM');
           if (!customCounts.includes(playerCount)) setMode('BOARD');
           setCustomRoles(buildDefaultCustomRoles(playerCount));
+          setOpenGroups({});
+          setSearchKeyword('');
+          setTeamFilter('ALL');
         })
         .catch((err) => setError(`无法加载板子：${err.message}`));
   }, [playerCount]);
@@ -396,10 +401,73 @@ export default function HomePage() {
                           {isRoleFull && <div className="mt-2 text-xs text-green-100">人数已满，不能继续增加角色。</div>}
                         </div>
 
+                        <div className="mb-4 grid gap-3">
+                          <input
+                              value={searchKeyword}
+                              onChange={(e) => setSearchKeyword(e.target.value)}
+                              placeholder="搜索角色名称（例如：预言家 / 狼 / 女巫）"
+                              className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm outline-none"
+                          />
+
+                          <div className="grid grid-cols-5 gap-2 text-sm">
+                            {[
+                              { label: '全部', value: 'ALL' },
+                              { label: '狼人', value: 'WOLF' },
+                              { label: '好人', value: 'GOOD' },
+                              { label: '第三方', value: 'THIRD_PARTY' },
+                              { label: '其他', value: 'OTHER' }
+                            ].map((item) => (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    onClick={() => setTeamFilter(item.value as 'ALL' | 'WOLF' | 'GOOD' | 'THIRD_PARTY' | 'OTHER')}
+                                    className={`rounded-2xl px-2 py-2 font-bold ${
+                                        teamFilter === item.value ? 'bg-purple-500' : 'bg-black/30'
+                                    }`}
+                                >
+                                  {item.label}
+                                </button>
+                            ))}
+                          </div>
+
+                          {(searchKeyword || teamFilter !== 'ALL') && (
+                              <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSearchKeyword('');
+                                    setTeamFilter('ALL');
+                                  }}
+                                  className="text-left text-xs font-bold text-purple-200"
+                              >
+                                清空搜索和筛选
+                              </button>
+                          )}
+                        </div>
+
                         <div className="grid gap-4">
                           {groupedRoles.map(([groupName, groupRoles]) => {
-                            const isOpen = openGroups[groupName] ?? false;
-                            const groupCount = groupRoles.reduce((sum, role) => sum + (customRoles[role.id] || 0), 0);
+                            const filteredRoles = groupRoles.filter((role) => {
+                              const keyword = searchKeyword.trim();
+                              const matchKeyword =
+                                  !keyword ||
+                                  role.name.includes(keyword);
+
+                              const matchTeam =
+                                  teamFilter === 'ALL' ||
+                                  role.team === teamFilter ||
+                                  (teamFilter === 'OTHER' &&
+                                      role.team !== 'WOLF' &&
+                                      role.team !== 'GOOD' &&
+                                      role.team !== 'THIRD_PARTY');
+
+                              return matchKeyword && matchTeam;
+                            });
+
+                            if (filteredRoles.length === 0) return null;
+
+                            const isFiltering = Boolean(searchKeyword.trim()) || teamFilter !== 'ALL';
+                            const isOpen = isFiltering ? true : openGroups[groupName] ?? false;
+                            const groupCount = filteredRoles.reduce((sum, role) => sum + (customRoles[role.id] || 0), 0);
 
                             return (
                                 <div key={groupName} className="rounded-3xl border border-white/10 bg-black/20">
@@ -421,7 +489,7 @@ export default function HomePage() {
 
                                   {isOpen && (
                                       <div className="grid gap-3 px-4 pb-4 md:grid-cols-2">
-                                        {groupRoles.map((role) => {
+                                        {filteredRoles.map((role) => {
                                           const expanded = expandedRoleId === role.id;
                                           return (
                                               <div key={role.id} className="rounded-3xl border border-white/10 bg-black/25 p-4">
