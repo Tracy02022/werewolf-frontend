@@ -33,9 +33,9 @@ const customCounts = [10, 11, 12, 13, 14, 15, 16];
 
 function teamName(team: string) {
   if (team === 'WOLF') return '狼人阵营';
-  if (team === 'GOOD') return '好人阵营';
+  if (team === 'GOOD') return '神职阵营';
   if (team === 'THIRD_PARTY') return '第三方阵营';
-  return '其他角色';
+  return '平民';
 }
 
 function teamOrder(team: string) {
@@ -413,9 +413,9 @@ export default function HomePage() {
                             {[
                               { label: '全部', value: 'ALL' },
                               { label: '狼人', value: 'WOLF' },
-                              { label: '好人', value: 'GOOD' },
+                              { label: '神职', value: 'GOOD' },
                               { label: '第三方', value: 'THIRD_PARTY' },
-                              { label: '其他', value: 'OTHER' }
+                              { label: '平民', value: 'OTHER' }
                             ].map((item) => (
                                 <button
                                     key={item.value}
