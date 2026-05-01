@@ -55,7 +55,11 @@ function buildDefaultCustomRoles(playerCount: number): Record<string, number> {
     HUNTER: 1
   };
   if (playerCount >= 11) result.GUARD = 1;
-  result.VILLAGER = playerCount - Object.entries(result).filter(([key]) => key !== 'VILLAGER').reduce((sum, [, count]) => sum + count, 0);
+  result.VILLAGER =
+      playerCount -
+      Object.entries(result)
+          .filter(([key]) => key !== 'VILLAGER')
+          .reduce((sum, [, count]) => sum + count, 0);
   return result;
 }
 
@@ -98,9 +102,10 @@ export default function HomePage() {
     });
   }, [roles]);
 
-  const selectedBoard = boards.find((board) => board.id === selectedBoardId);
   const customTotal = Object.values(customRoles).reduce((sum, count) => sum + count, 0);
   const remainingCount = playerCount - customTotal;
+  const isRoleFull = customTotal >= playerCount;
+
   const isHost = Boolean(room && myPlayerId && room.hostPlayerId === myPlayerId);
   const canStart = Boolean(room && isHost && room.phase === 'WAITING' && room.players.length === room.playerCount);
   const canUseCustom = customCounts.includes(playerCount);
@@ -170,6 +175,11 @@ export default function HomePage() {
     setCustomRoles((prev) => {
       const next = { ...prev };
       const current = next[roleId] || 0;
+
+      if (delta > 0 && customTotal >= playerCount) {
+        return next;
+      }
+
       const value = Math.max(0, current + delta);
       if (value === 0) delete next[roleId];
       else next[roleId] = value;
@@ -279,6 +289,7 @@ export default function HomePage() {
                     <DoorOpen className="text-blue-200" />
                     <h2 className="text-2xl font-bold">加入房间</h2>
                   </div>
+
                   <label className="text-sm text-purple-100/80">房间号</label>
                   <input
                       value={roomCodeInput}
@@ -286,6 +297,7 @@ export default function HomePage() {
                       placeholder="输入 6 位房间号"
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none"
                   />
+
                   <label className="mt-4 block text-sm text-purple-100/80">你的昵称</label>
                   <input
                       value={playerName}
@@ -293,6 +305,7 @@ export default function HomePage() {
                       placeholder="例如 Tracy"
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none"
                   />
+
                   <button
                       disabled={!roomCodeInput.trim() || !playerName.trim() || loading}
                       onClick={handleJoinRoom}
@@ -354,7 +367,9 @@ export default function HomePage() {
                             <button
                                 key={board.id}
                                 onClick={() => setSelectedBoardId(board.id)}
-                                className={`rounded-3xl border p-4 text-left ${selectedBoardId === board.id ? 'border-purple-300 bg-purple-500/20' : 'border-white/10 bg-black/20'}`}
+                                className={`rounded-3xl border p-4 text-left ${
+                                    selectedBoardId === board.id ? 'border-purple-300 bg-purple-500/20' : 'border-white/10 bg-black/20'
+                                }`}
                             >
                               <div className="font-bold">{board.name}</div>
                               <div className="mt-1 text-sm text-purple-100/70">{board.description}</div>
@@ -378,6 +393,7 @@ export default function HomePage() {
                           已选择：{customTotal} / {playerCount} 人
                           <br />
                           剩余：{remainingCount} 人
+                          {isRoleFull && <div className="mt-2 text-xs text-green-100">人数已满，不能继续增加角色。</div>}
                         </div>
 
                         <div className="grid gap-4">
@@ -436,10 +452,17 @@ export default function HomePage() {
                                                     >
                                                       -
                                                     </button>
+
                                                     <div className="w-6 text-center text-xl font-bold">{customRoles[role.id] || 0}</div>
+
                                                     <button
+                                                        disabled={isRoleFull}
                                                         onClick={() => updateRoleCount(role.id, 1)}
-                                                        className="h-10 w-10 rounded-full bg-purple-500 text-xl font-black"
+                                                        className={`h-10 w-10 rounded-full text-xl font-black ${
+                                                            isRoleFull
+                                                                ? 'cursor-not-allowed bg-gray-500/50 text-gray-300'
+                                                                : 'bg-purple-500 text-white'
+                                                        }`}
                                                     >
                                                       +
                                                     </button>
@@ -487,10 +510,18 @@ export default function HomePage() {
                     <button onClick={leaveRoom} className="rounded-2xl bg-white/15 px-4 py-3 font-bold hover:bg-white/20">
                       退出房间
                     </button>
-                    <button disabled={loading} onClick={() => run(() => api.fillBots(room.roomCode))} className="rounded-2xl bg-indigo-500 px-4 py-3 font-bold disabled:bg-gray-600">
+                    <button
+                        disabled={loading}
+                        onClick={() => run(() => api.fillBots(room.roomCode))}
+                        className="rounded-2xl bg-indigo-500 px-4 py-3 font-bold disabled:bg-gray-600"
+                    >
                       Bot 补满
                     </button>
-                    <button disabled={!canStart || loading} onClick={() => run(() => api.startGame(room.roomCode, myPlayerId!))} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-green-500 px-4 py-3 font-bold disabled:bg-gray-600">
+                    <button
+                        disabled={!canStart || loading}
+                        onClick={() => run(() => api.startGame(room.roomCode, myPlayerId!))}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-green-500 px-4 py-3 font-bold disabled:bg-gray-600"
+                    >
                       <Play size={18} /> 开始游戏
                     </button>
                     <button
@@ -551,9 +582,7 @@ export default function HomePage() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
               <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center text-black shadow-2xl">
                 <h2 className="text-xl font-black">确认创建房间？</h2>
-                <p className="mt-2 text-sm text-gray-600">
-                  创建后会生成房间号，其他玩家可输入房间号加入。
-                </p>
+                <p className="mt-2 text-sm text-gray-600">创建后会生成房间号，其他玩家可输入房间号加入。</p>
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   <button onClick={() => setConfirmCreate(false)} className="rounded-2xl bg-gray-200 px-4 py-3 font-bold">
                     取消
