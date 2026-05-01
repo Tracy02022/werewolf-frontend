@@ -29,7 +29,7 @@ const phaseStyleMap: Record<string, string> = {
 };
 
 const playerCounts = [9, 10, 11, 12, 13, 14, 15, 16];
-const customCounts = [10, 11, 12, 13, 14, 15, 16];
+const customCounts = [9, 10, 11, 12, 13, 14, 15, 16];
 
 function teamName(team: string) {
   if (team === 'WOLF') return '狼人阵营';
