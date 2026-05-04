@@ -30,6 +30,7 @@ const phaseStyleMap: Record<string, string> = {
 
 const playerCounts = [9, 10, 11, 12, 13, 14, 15, 16];
 const customCounts = [9, 10, 11, 12, 13, 14, 15, 16];
+const boardCounts = [12];
 
 function teamName(team: string) {
   if (team === 'WOLF') return '狼人阵营';
@@ -54,12 +55,15 @@ function buildDefaultCustomRoles(playerCount: number): Record<string, number> {
     WITCH: 1,
     HUNTER: 1
   };
+
   if (playerCount >= 11) result.GUARD = 1;
+
   result.VILLAGER =
       playerCount -
       Object.entries(result)
           .filter(([key]) => key !== 'VILLAGER')
           .reduce((sum, [, count]) => sum + count, 0);
+
   return result;
 }
 
@@ -111,7 +115,12 @@ export default function HomePage() {
   const isHost = Boolean(room && myPlayerId && room.hostPlayerId === myPlayerId);
   const canStart = Boolean(room && isHost && room.phase === 'WAITING' && room.players.length === room.playerCount);
   const canUseCustom = customCounts.includes(playerCount);
+  const canUseBoard = boardCounts.includes(playerCount) && boards.length > 0;
   const showRoomSetup = !room;
+
+  const currentRoomRoles = room?.customMode
+      ? room.customRoles
+      : boards.find((board) => board.id === room?.boardId)?.roles;
 
   useEffect(() => {
     api.getRoles().then(setRoles).catch((err) => setError(`无法加载角色：${err.message}`));
@@ -126,9 +135,21 @@ export default function HomePage() {
         .getBoards(playerCount)
         .then((data) => {
           setBoards(data);
-          setSelectedBoardId(data[0]?.id || '');
-          if (playerCount !== 12 && mode === 'BOARD') setMode('CUSTOM');
-          if (!customCounts.includes(playerCount)) setMode('BOARD');
+
+          const canBoard = boardCounts.includes(playerCount) && data.length > 0;
+          const canCustom = customCounts.includes(playerCount);
+
+          if (canBoard) {
+            setSelectedBoardId(data[0]?.id || '');
+            setMode('BOARD');
+          } else if (canCustom) {
+            setSelectedBoardId('');
+            setMode('CUSTOM');
+          } else {
+            setSelectedBoardId('');
+            setMode('BOARD');
+          }
+
           setCustomRoles(buildDefaultCustomRoles(playerCount));
           setOpenGroups({});
           setSearchKeyword('');
@@ -206,14 +227,17 @@ export default function HomePage() {
 
   const handleCreateRoom = async () => {
     setConfirmCreate(false);
+
     if (!hostName.trim()) {
       setError('请输入你的昵称');
       return;
     }
+
     if (mode === 'CUSTOM' && customTotal !== playerCount) {
       setError(`当前角色总数为 ${customTotal}，必须等于 ${playerCount}`);
       return;
     }
+
     if (mode === 'BOARD' && !selectedBoardId) {
       setError('请选择一个经典板子');
       return;
@@ -277,7 +301,11 @@ export default function HomePage() {
             </div>
           </header>
 
-          {error && <div className="mb-6 rounded-2xl border border-red-300/20 bg-red-500/20 p-4 text-sm text-red-100">{error}</div>}
+          {error && (
+              <div className="mb-6 rounded-2xl border border-red-300/20 bg-red-500/20 p-4 text-sm text-red-100">
+                {error}
+              </div>
+          )}
 
           {!room && (
               <div className="mb-6 flex gap-3">
@@ -351,12 +379,13 @@ export default function HomePage() {
 
                   <div className="mt-5 grid grid-cols-2 gap-3">
                     <button
-                        disabled={playerCount !== 12}
+                        disabled={!canUseBoard}
                         onClick={() => setMode('BOARD')}
                         className={`rounded-2xl px-4 py-3 font-bold ${mode === 'BOARD' ? 'bg-purple-500' : 'bg-black/30'} disabled:opacity-40`}
                     >
                       经典板子
                     </button>
+
                     <button
                         disabled={!canUseCustom}
                         onClick={() => setMode('CUSTOM')}
@@ -448,9 +477,7 @@ export default function HomePage() {
                           {groupedRoles.map(([groupName, groupRoles]) => {
                             const filteredRoles = groupRoles.filter((role) => {
                               const keyword = searchKeyword.trim();
-                              const matchKeyword =
-                                  !keyword ||
-                                  role.name.includes(keyword);
+                              const matchKeyword = !keyword || role.name.includes(keyword);
 
                               const matchTeam =
                                   teamFilter === 'ALL' ||
@@ -527,9 +554,7 @@ export default function HomePage() {
                                                         disabled={isRoleFull}
                                                         onClick={() => updateRoleCount(role.id, 1)}
                                                         className={`h-10 w-10 rounded-full text-xl font-black ${
-                                                            isRoleFull
-                                                                ? 'cursor-not-allowed bg-gray-500/50 text-gray-300'
-                                                                : 'bg-purple-500 text-white'
+                                                            isRoleFull ? 'cursor-not-allowed bg-gray-500/50 text-gray-300' : 'bg-purple-500 text-white'
                                                         }`}
                                                     >
                                                       +
@@ -616,6 +641,26 @@ export default function HomePage() {
                       </div>
                   )}
                 </section>
+
+                {currentRoomRoles && (
+                    <section className="mt-6 rounded-3xl border border-white/10 bg-white/10 p-5 shadow-2xl backdrop-blur">
+                      <div className="mb-4 flex items-center gap-2">
+                        <Sparkles className="text-purple-200" />
+                        <h2 className="text-2xl font-bold">本局角色配置</h2>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(currentRoomRoles).map(([roleId, count]) => (
+                            <span
+                                key={roleId}
+                                className="rounded-full bg-purple-500/20 px-3 py-2 text-sm font-bold text-purple-100"
+                            >
+                      {roleMap.get(roleId)?.name || roleId} × {count}
+                    </span>
+                        ))}
+                      </div>
+                    </section>
+                )}
 
                 <section className="mt-6 rounded-3xl border border-white/10 bg-white/10 p-5 shadow-2xl backdrop-blur">
                   <div className="mb-4 flex items-center gap-2">
