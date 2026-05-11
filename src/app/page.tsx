@@ -68,6 +68,8 @@ function buildDefaultCustomRoles(playerCount: number): Record<string, number> {
 }
 
 export default function HomePage() {
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [boardsLoading, setBoardsLoading] = useState(false);
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
   const [room, setRoom] = useState<GameRoom | null>(null);
@@ -123,7 +125,37 @@ export default function HomePage() {
       : boards.find((board) => board.id === room?.boardId)?.roles;
 
   useEffect(() => {
-    api.getRoles().then(setRoles).catch((err) => setError(`无法加载角色：${err.message}`));
+    const loadRoles = async () => {
+      setRolesLoading(true);
+      setError('');
+
+      try {
+        const data = await api.getRoles();
+
+        if (!data || data.length === 0) {
+          throw new Error('角色列表为空，请稍后重试');
+        }
+
+        setRoles(data);
+      } catch (err: any) {
+        setError(`无法加载角色：${err.message}`);
+
+        setTimeout(async () => {
+          try {
+            const retryData = await api.getRoles();
+            setRoles(retryData);
+            setError('');
+          } catch {
+            // 保留原错误
+          }
+        }, 1200);
+      } finally {
+        setRolesLoading(false);
+      }
+    };
+
+    loadRoles();
+
     const savedRoomCode = localStorage.getItem('roomCode');
     const savedPlayerId = localStorage.getItem('playerId');
     if (savedRoomCode) setRoomCodeInput(savedRoomCode);
@@ -131,31 +163,39 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    api
-        .getBoards(playerCount)
-        .then((data) => {
-          setBoards(data);
+    const loadBoards = async () => {
+      setBoardsLoading(true);
 
-          const canBoard = boardCounts.includes(playerCount) && data.length > 0;
-          const canCustom = customCounts.includes(playerCount);
+      try {
+        const data = await api.getBoards(playerCount);
+        setBoards(data || []);
 
-          if (canBoard) {
-            setSelectedBoardId(data[0]?.id || '');
-            setMode('BOARD');
-          } else if (canCustom) {
-            setSelectedBoardId('');
-            setMode('CUSTOM');
-          } else {
-            setSelectedBoardId('');
-            setMode('BOARD');
-          }
+        const canBoard = boardCounts.includes(playerCount) && data.length > 0;
+        const canCustom = customCounts.includes(playerCount);
 
-          setCustomRoles(buildDefaultCustomRoles(playerCount));
-          setOpenGroups({});
-          setSearchKeyword('');
-          setTeamFilter('ALL');
-        })
-        .catch((err) => setError(`无法加载板子：${err.message}`));
+        if (canBoard) {
+          setSelectedBoardId(data[0]?.id || '');
+          setMode('BOARD');
+        } else if (canCustom) {
+          setSelectedBoardId('');
+          setMode('CUSTOM');
+        }
+
+        setCustomRoles(buildDefaultCustomRoles(playerCount));
+        setOpenGroups({});
+        setSearchKeyword('');
+        setTeamFilter('ALL');
+      } catch (err: any) {
+        setBoards([]);
+        setSelectedBoardId('');
+        setMode('CUSTOM');
+        setError(`无法加载板子：${err.message}`);
+      } finally {
+        setBoardsLoading(false);
+      }
+    };
+
+    loadBoards();
   }, [playerCount]);
 
   useEffect(() => {
@@ -473,6 +513,22 @@ export default function HomePage() {
                           )}
                         </div>
 
+                        {rolesLoading && (
+                            <div className="mb-4 rounded-2xl bg-white/10 p-4 text-center text-sm text-purple-100">
+                              正在加载角色列表...
+                            </div>
+                        )}
+
+                        {!rolesLoading && roles.length === 0 && (
+                            <button
+                                type="button"
+                                onClick={() => window.location.reload()}
+                                className="mb-4 w-full rounded-2xl bg-purple-500 px-4 py-3 font-bold"
+                            >
+                              角色加载失败，点击重新加载
+                            </button>
+                        )}
+
                         <div className="grid gap-4">
                           {groupedRoles.map(([groupName, groupRoles]) => {
                             const filteredRoles = groupRoles.filter((role) => {
@@ -574,7 +630,7 @@ export default function HomePage() {
                   )}
 
                   <button
-                      disabled={loading || !hostName.trim()}
+                      disabled={loading || !hostName.trim() || rolesLoading || roles.length === 0}
                       onClick={() => setConfirmCreate(true)}
                       className="mt-5 w-full rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 px-5 py-4 font-bold shadow-lg disabled:bg-gray-600"
                   >
