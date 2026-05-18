@@ -630,7 +630,7 @@ export default function HomePage() {
                   )}
 
                   <button
-                      disabled={loading || !hostName.trim() || rolesLoading || roles.length === 0}
+                      disabled={loading}
                       onClick={() => setConfirmCreate(true)}
                       className="mt-5 w-full rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 px-5 py-4 font-bold shadow-lg disabled:bg-gray-600"
                   >
