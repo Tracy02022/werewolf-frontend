@@ -36,8 +36,18 @@ export type GameRoom = {
     round: number;
     hostPlayerId: string;
     players: Player[];
+    currentNightAction?: 'NONE' | 'WOLF_KILL' | 'WITCH' | 'SEER' | 'MECHANICAL_WOLF' | 'HUNTER_CHECK' | 'FINISHED' | string;
+    nightActionEndsAtEpochMs?: number;
     wolfKillTargetSeatNumber?: number | null;
     wolfKillActorPlayerId?: string | null;
+    witchSavedWolfKill?: boolean;
+    witchPoisonTargetSeatNumber?: number | null;
+    nightDeathSeatNumbers?: number[];
+    nightDeathMessage?: string;
+    hunterCanShootSeatNumbers?: number[];
+    mechanicalWolfLearnedSeatNumber?: number | null;
+    mechanicalWolfLearnedRole?: string | null;
+    mechanicalWolfLearnedRoleName?: string | null;
 };
 
 export type RoleLookupResponse = {
@@ -107,6 +117,24 @@ export const api = {
         request<GameRoom>(`/api/rooms/${roomCode}/wolf-kill`, {
             method: 'POST',
             body: JSON.stringify({ playerId, targetSeatNumber })
+        }),
+
+    witchAction: (roomCode: string, playerId: string, useSave: boolean, poisonTargetSeatNumber?: number | null) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/witch-action`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, useSave, poisonTargetSeatNumber })
+        }),
+
+    mechanicalWolfLearn: (roomCode: string, playerId: string, targetSeatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/mechanical-wolf-learn`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, targetSeatNumber })
+        }),
+
+    advanceNightAction: (roomCode: string, playerId: string) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/advance-night-action`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId })
         }),
 
     getRoom: (roomCode: string) => request<GameRoom>(`/api/rooms/${roomCode}`),
