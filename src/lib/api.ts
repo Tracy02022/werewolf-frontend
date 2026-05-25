@@ -32,7 +32,7 @@ export type GameRoom = {
     boardId?: string | null;
     customMode: boolean;
     customRoles?: Record<string, number> | null;
-    phase: 'WAITING' | 'NIGHT' | 'DAY_DISCUSSION' | 'VOTING' | 'FINISHED' | string;
+    phase: 'WAITING' | 'NIGHT' | 'SHERIFF_ELECTION' | 'DAY_DISCUSSION' | 'VOTING' | 'FINISHED' | string;
     round: number;
     hostPlayerId: string;
     players: Player[];
@@ -44,7 +44,10 @@ export type GameRoom = {
     witchPoisonTargetSeatNumber?: number | null;
     nightDeathSeatNumbers?: number[];
     nightDeathMessage?: string;
+    firstDayNightReportReleased?: boolean;
     hunterCanShootSeatNumbers?: number[];
+    seerCheckedSeatNumber?: number | null;
+    seerCheckedTeam?: string | null;
     mechanicalWolfLearnedSeatNumber?: number | null;
     mechanicalWolfLearnedRole?: string | null;
     mechanicalWolfLearnedRoleName?: string | null;
@@ -123,6 +126,12 @@ export const api = {
         request<GameRoom>(`/api/rooms/${roomCode}/witch-action`, {
             method: 'POST',
             body: JSON.stringify({ playerId, useSave, poisonTargetSeatNumber })
+        }),
+
+    seerAction: (roomCode: string, playerId: string, targetSeatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/seer-action`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, targetSeatNumber })
         }),
 
     mechanicalWolfLearn: (roomCode: string, playerId: string, targetSeatNumber: number) =>

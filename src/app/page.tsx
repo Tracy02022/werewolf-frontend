@@ -7,6 +7,7 @@ import { api, Board, GameRoom, RoleInfo, RulesResponse } from '@/lib/api';
 const phaseNameMap: Record<string, string> = {
   WAITING: '等待玩家',
   NIGHT: '🌙 夜晚阶段',
+  SHERIFF_ELECTION: '🎖️ 上警竞选',
   DAY_DISCUSSION: '☀️ 白天发言',
   VOTING: '🗳️ 投票阶段',
   FINISHED: '🏁 游戏结束'
@@ -15,6 +16,7 @@ const phaseNameMap: Record<string, string> = {
 const phaseDescriptionMap: Record<string, string> = {
   WAITING: '等待玩家加入，房主可在人数满后开始游戏。',
   NIGHT: '天黑请闭眼，按身份进行夜晚行动。',
+  SHERIFF_ELECTION: '第一天先进行上警竞选和警长选择，暂不公布夜间倒牌信息。',
   DAY_DISCUSSION: '白天请依次发言，分析场上身份。',
   VOTING: '开始投票，放逐一名玩家。',
   FINISHED: '游戏结束，请查看胜负结果。'
@@ -23,6 +25,7 @@ const phaseDescriptionMap: Record<string, string> = {
 const phaseStyleMap: Record<string, string> = {
   WAITING: 'from-slate-500 to-slate-700',
   NIGHT: 'from-indigo-900 to-black',
+  SHERIFF_ELECTION: 'from-amber-400 to-yellow-600 text-black',
   DAY_DISCUSSION: 'from-yellow-300 to-orange-400 text-black',
   VOTING: 'from-red-500 to-pink-600',
   FINISHED: 'from-emerald-500 to-teal-600'
@@ -100,6 +103,7 @@ export default function HomePage() {
   const [wolfActionLoading, setWolfActionLoading] = useState(false);
   const [nightSecondsLeft, setNightSecondsLeft] = useState(0);
   const [witchActionLoading, setWitchActionLoading] = useState(false);
+  const [seerActionLoading, setSeerActionLoading] = useState(false);
   const [mechanicalWolfLoading, setMechanicalWolfLoading] = useState(false);
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
@@ -144,14 +148,19 @@ export default function HomePage() {
   }, [room, myPlayerId]);
 
   const isMyRoleWolf = myRole?.team === 'WOLF';
+  const isMyRoleWitch = myRole?.id === 'WITCH';
+  const isMyRoleSeer = ['SEER', 'SKY_EYE', 'AWAKENED_SEER', 'PSYCHIC'].includes(myRole?.id || '');
+  const isMyRoleHunter = myRole?.id === 'HUNTER';
+  const isMyRoleMechanicalWolf = myRole?.id === 'MECHANICAL_WOLF';
 
+  // 操作区不再强依赖 myRole，因为身份接口可能比房间轮询慢。
+  // 前端负责让当前阶段可点；后端负责严格校验是否真的是狼人/女巫/预言家/机械狼。
   const canWolfAct = Boolean(
       room &&
       myPlayerId &&
       myPlayer?.alive &&
       room.phase === 'NIGHT' &&
       room.currentNightAction === 'WOLF_KILL' &&
-      isMyRoleWolf &&
       !room.wolfKillTargetSeatNumber
   );
 
@@ -402,8 +411,15 @@ export default function HomePage() {
   const getJudgeTextForRoom = (targetRoom: GameRoom) => {
     const action = targetRoom.currentNightAction;
 
+    if (targetRoom.phase === 'SHERIFF_ELECTION') {
+      return '天亮了。第一天先进行上警竞选和警长选择，暂不公布夜间倒牌信息。';
+    }
+
     if (targetRoom.phase === 'DAY_DISCUSSION') {
-      return `天亮了。${targetRoom.nightDeathMessage || '昨夜是平安夜，没有玩家倒牌。'} 现在进入白天发言阶段。`;
+      if (targetRoom.round === 1 && !targetRoom.firstDayNightReportReleased) {
+        return '现在进入白天发言阶段。';
+      }
+      return `现在公布夜间信息。${targetRoom.nightDeathMessage || '昨夜是平安夜，没有玩家倒牌。'} 现在进入白天发言阶段。`;
     }
 
     if (targetRoom.phase !== 'NIGHT') {
@@ -415,7 +431,7 @@ export default function HomePage() {
     }
 
     if (action === 'WITCH') {
-      return `狼人请闭眼。女巫请睁眼。今晚的刀口是 ${targetRoom.wolfKillTargetSeatNumber || '无'} 号。请选择是否使用解药或毒药。女巫中刀不能自救。`;
+      return '狼人请闭眼。女巫请睁眼。请查看你的页面确认今晚刀口，并选择是否使用解药或毒药。女巫中刀不能自救。';
     }
 
     if (action === 'SEER') {
@@ -427,7 +443,7 @@ export default function HomePage() {
     }
 
     if (action === 'HUNTER_CHECK') {
-      return '猎人请睁眼。法官会告知你白天是否可以开枪。';
+      return '猎人请睁眼。请查看你的页面确认开枪状态。';
     }
 
     return '夜间行动结束。';
@@ -513,6 +529,21 @@ export default function HomePage() {
       setError(err.message || '女巫行动失败');
     } finally {
       setWitchActionLoading(false);
+    }
+  };
+
+  const handleSeerAction = async (targetSeatNumber: number) => {
+    if (!room || !myPlayerId) return;
+    setSeerActionLoading(true);
+    setError('');
+    try {
+      const updatedRoom = await api.seerAction(room.roomCode, myPlayerId, targetSeatNumber);
+      setRoom(updatedRoom);
+      judgeSpeak(getJudgeTextForRoom(updatedRoom));
+    } catch (err: any) {
+      setError(err.message || '预言家操作失败');
+    } finally {
+      setSeerActionLoading(false);
     }
   };
 
@@ -915,7 +946,7 @@ export default function HomePage() {
                           {nightSecondsLeft > 0 && <span> ｜ 倒计时 {nightSecondsLeft} 秒</span>}
                         </div>
                     )}
-                    {room.phase === 'DAY_DISCUSSION' && room.nightDeathMessage && (
+                    {room.phase === 'DAY_DISCUSSION' && room.nightDeathMessage && (room.round !== 1 || room.firstDayNightReportReleased) && (
                         <div className="mt-4 rounded-2xl bg-black/25 px-4 py-3 text-sm font-bold">
                           法官公布：{room.nightDeathMessage}
                         </div>
@@ -963,6 +994,16 @@ export default function HomePage() {
                     </button>
                   </div>
 
+
+                  {room.phase === 'SHERIFF_ELECTION' && (
+                      <div className="mt-5 rounded-3xl bg-yellow-400/20 p-5 text-center text-yellow-50">
+                        <div className="text-xl font-black">第一天上警竞选</div>
+                        <div className="mt-2 text-sm leading-6 text-yellow-50/90">
+                          请先完成上警发言、警长竞选和警徽归属。完成后由法官点击「下一阶段」，再公布昨夜倒牌信息。
+                        </div>
+                      </div>
+                  )}
+
                   {room.phase !== 'WAITING' && (
                       <div className="mt-5 rounded-3xl bg-black/25 p-5 text-center">
                         <div className="text-sm text-purple-100/70">身份已发放</div>
@@ -979,7 +1020,7 @@ export default function HomePage() {
                   )}
                 </section>
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && isMyRoleWolf && (
+                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && myPlayer?.alive && (
                     <section className="mt-6 rounded-3xl border border-red-300/20 bg-red-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Moon className="text-red-200" />
@@ -1026,7 +1067,7 @@ export default function HomePage() {
                 )}
 
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'WITCH' && myRole?.id === 'WITCH' && (
+                {room.phase === 'NIGHT' && room.currentNightAction === 'WITCH' && myPlayer?.alive && isMyRoleWitch && (
                     <section className="mt-6 rounded-3xl border border-purple-300/20 bg-purple-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Sparkles className="text-purple-200" />
@@ -1072,7 +1113,38 @@ export default function HomePage() {
                     </section>
                 )}
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'MECHANICAL_WOLF' && myRole?.id === 'MECHANICAL_WOLF' && (
+                {room.phase === 'NIGHT' && room.currentNightAction === 'SEER' && myPlayer?.alive && isMyRoleSeer && (
+                    <section className="mt-6 rounded-3xl border border-blue-300/20 bg-blue-500/10 p-5 shadow-2xl backdrop-blur">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Eye className="text-blue-200" />
+                        <h2 className="text-2xl font-bold">预言家夜晚行动</h2>
+                      </div>
+                      <p className="text-sm leading-6 text-blue-100/80">
+                        请选择要查验的玩家。只有预言家提交会成功；如果你不是预言家，后端会拒绝本次操作。
+                      </p>
+                      {room.seerCheckedSeatNumber && (
+                          <div className="mt-3 rounded-2xl bg-blue-500/20 p-4 text-sm font-bold text-blue-100">
+                            你查验了 {room.seerCheckedSeatNumber} 号，结果是：{room.seerCheckedTeam}
+                          </div>
+                      )}
+                      <div className="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
+                        {room.players.map((player) => (
+                            <button
+                                key={player.id}
+                                type="button"
+                                disabled={seerActionLoading || !player.alive || Boolean(room.seerCheckedSeatNumber)}
+                                onClick={() => handleSeerAction(player.seatNumber)}
+                                className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-blue-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
+                            >
+                              {player.seatNumber}号
+                              <div className="truncate text-xs font-normal">{player.name}</div>
+                            </button>
+                        ))}
+                      </div>
+                    </section>
+                )}
+
+                {room.phase === 'NIGHT' && room.currentNightAction === 'MECHANICAL_WOLF' && myPlayer?.alive && isMyRoleMechanicalWolf && (
                     <section className="mt-6 rounded-3xl border border-orange-300/20 bg-orange-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Sparkles className="text-orange-200" />
@@ -1100,7 +1172,7 @@ export default function HomePage() {
                     </section>
                 )}
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'HUNTER_CHECK' && myRole?.id === 'HUNTER' && (
+                {room.phase === 'NIGHT' && room.currentNightAction === 'HUNTER_CHECK' && myPlayer?.alive && isMyRoleHunter && (
                     <section className="mt-6 rounded-3xl border border-yellow-300/20 bg-yellow-500/10 p-5 shadow-2xl backdrop-blur">
                       <h2 className="text-2xl font-bold">猎人状态提示</h2>
                       <div className="mt-3 rounded-2xl bg-black/25 p-4 text-sm font-bold text-yellow-100">
