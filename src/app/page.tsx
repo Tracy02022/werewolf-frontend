@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Crown, DoorOpen, Eye, Moon, Play, RefreshCcw, Sparkles, Users, X } from 'lucide-react';
-import { api, Board, GameRoom, RoleInfo } from '@/lib/api';
+import { Crown, DoorOpen, Eye, Moon, Play, RefreshCcw, Sparkles, Users, X, Volume2, BookOpen } from 'lucide-react';
+import { api, Board, GameRoom, RoleInfo, RulesResponse } from '@/lib/api';
 
 const phaseNameMap: Record<string, string> = {
   WAITING: '等待玩家',
@@ -92,6 +92,11 @@ export default function HomePage() {
   const [error, setError] = useState('');
   const [confirmCreate, setConfirmCreate] = useState(false);
   const [confirmNextPhase, setConfirmNextPhase] = useState(false);
+  const [hostSeatNumber, setHostSeatNumber] = useState(1);
+  const [joinSeatNumber, setJoinSeatNumber] = useState(1);
+  const [rules, setRules] = useState<RulesResponse | null>(null);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [movingSeat, setMovingSeat] = useState(false);
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
 
@@ -124,6 +129,16 @@ export default function HomePage() {
       ? room.customRoles
       : boards.find((board) => board.id === room?.boardId)?.roles;
 
+  const occupiedSeats = useMemo(() => {
+    if (!room) return new Set<number>();
+    return new Set(room.players.map((player) => player.seatNumber));
+  }, [room]);
+
+  const myPlayer = useMemo(() => {
+    if (!room || !myPlayerId) return null;
+    return room.players.find((player) => player.id === myPlayerId) || null;
+  }, [room, myPlayerId]);
+
   useEffect(() => {
     const loadRoles = async () => {
       setRolesLoading(true);
@@ -155,6 +170,10 @@ export default function HomePage() {
     };
 
     loadRoles();
+
+    api.getRules()
+        .then(setRules)
+        .catch(() => undefined);
 
     const savedRoomCode = localStorage.getItem('roomCode');
     const savedPlayerId = localStorage.getItem('playerId');
@@ -197,6 +216,11 @@ export default function HomePage() {
 
     loadBoards();
   }, [playerCount]);
+
+  useEffect(() => {
+    if (hostSeatNumber > playerCount) setHostSeatNumber(1);
+    if (joinSeatNumber > playerCount) setJoinSeatNumber(1);
+  }, [playerCount, hostSeatNumber, joinSeatNumber]);
 
   useEffect(() => {
     if (!room?.roomCode) return;
@@ -255,7 +279,7 @@ export default function HomePage() {
 
   const handleJoinRoom = async () => {
     if (!roomCodeInput.trim() || !playerName.trim()) return;
-    const joinedRoom = await run(() => api.joinRoom(roomCodeInput.trim(), playerName.trim()));
+    const joinedRoom = await run(() => api.joinRoom(roomCodeInput.trim(), playerName.trim(), joinSeatNumber));
     if (!joinedRoom) return;
     const joinedPlayer = [...joinedRoom.players].reverse().find((player) => player.name === playerName.trim());
     if (joinedPlayer) {
@@ -287,6 +311,7 @@ export default function HomePage() {
         api.createRoom({
           playerCount,
           hostName: hostName.trim(),
+          seatNumber: hostSeatNumber,
           customMode: mode === 'CUSTOM',
           boardId: mode === 'BOARD' ? selectedBoardId : undefined,
           customRoles: mode === 'CUSTOM' ? customRoles : undefined
@@ -321,6 +346,58 @@ export default function HomePage() {
           .map(([roleId, count]) => `${roleMap.get(roleId)?.name || roleId}×${count}`)
           .join(' / ');
 
+  const judgeSpeak = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      setError('当前浏览器不支持语音播报');
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleMoveSeat = async (seatNumber: number) => {
+    if (!room || !myPlayerId) return;
+
+    setMovingSeat(true);
+    setError('');
+
+    try {
+      const updatedRoom = await api.moveSeat(room.roomCode, myPlayerId, seatNumber);
+      setRoom(updatedRoom);
+    } catch (err: any) {
+      setError(err.message || '换座失败');
+    } finally {
+      setMovingSeat(false);
+    }
+  };
+
+  const getJudgeText = () => {
+    if (!room) return '请继续游戏。';
+
+    const board = boards.find((item) => item.id === room.boardId);
+    const baseText = phaseDescriptionMap[room.phase] || '请继续游戏。';
+
+    if (room.phase === 'NIGHT') {
+      return `天黑请闭眼。${board?.name ? `本局板子是${board.name}。` : ''}${baseText} 狼人请睁眼，确认同伴并选择击杀目标。`;
+    }
+
+    if (room.phase === 'DAY_DISCUSSION') {
+      return `天亮了。现在进入白天发言阶段。${baseText}`;
+    }
+
+    if (room.phase === 'VOTING') {
+      return `现在进入投票阶段。${baseText}`;
+    }
+
+    return baseText;
+  };
+
   return (
       <main className="safe-top safe-bottom min-h-screen bg-[radial-gradient(circle_at_top,#3a2458_0%,#150d24_48%,#08040f_100%)] px-4 text-white md:px-10">
         <section className="mx-auto max-w-6xl">
@@ -338,6 +415,13 @@ export default function HomePage() {
             <div className="rounded-3xl border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
               <div className="text-sm text-purple-100/70">当前房间</div>
               <div className="mt-1 max-w-[280px] truncate text-lg font-bold">{room?.roomCode || '尚未进入'}</div>
+              <button
+                  type="button"
+                  onClick={() => setShowRulesModal(true)}
+                  className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-indigo-500 px-4 py-2 text-sm font-bold hover:bg-indigo-400"
+              >
+                <BookOpen size={16} /> 游戏规则
+              </button>
             </div>
           </header>
 
@@ -379,6 +463,27 @@ export default function HomePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 outline-none"
                   />
 
+                  <div className="mt-4">
+                    <div className="mb-2 text-sm text-purple-100/80">选择座位</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: 16 }, (_, i) => i + 1).map((seat) => (
+                          <button
+                              key={seat}
+                              type="button"
+                              onClick={() => setJoinSeatNumber(seat)}
+                              className={`rounded-2xl px-3 py-3 font-bold ${
+                                  joinSeatNumber === seat ? 'bg-blue-500' : 'bg-black/30'
+                              }`}
+                          >
+                            {seat}号
+                          </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-xs text-purple-100/60">
+                      加入后如果座位已被占用，系统会提示你重新选择。
+                    </div>
+                  </div>
+
                   <button
                       disabled={!roomCodeInput.trim() || !playerName.trim() || loading}
                       onClick={handleJoinRoom}
@@ -412,6 +517,24 @@ export default function HomePage() {
                               className={`rounded-2xl px-3 py-3 font-bold ${playerCount === count ? 'bg-purple-500' : 'bg-black/30'}`}
                           >
                             {count}人
+                          </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="mb-2 text-sm text-purple-100/80">选择你的座位</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: playerCount }, (_, i) => i + 1).map((seat) => (
+                          <button
+                              key={seat}
+                              type="button"
+                              onClick={() => setHostSeatNumber(seat)}
+                              className={`rounded-2xl px-3 py-3 font-bold ${
+                                  hostSeatNumber === seat ? 'bg-purple-500' : 'bg-black/30'
+                              }`}
+                          >
+                            {seat}号
                           </button>
                       ))}
                     </div>
@@ -655,7 +778,7 @@ export default function HomePage() {
                     <div className="mt-3 text-sm font-bold">第 {room.round || 0} 轮</div>
                   </div>
 
-                  <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  <div className="mt-5 grid gap-3 md:grid-cols-5">
                     <button onClick={leaveRoom} className="rounded-2xl bg-white/15 px-4 py-3 font-bold hover:bg-white/20">
                       退出房间
                     </button>
@@ -665,6 +788,13 @@ export default function HomePage() {
                         className="rounded-2xl bg-indigo-500 px-4 py-3 font-bold disabled:bg-gray-600"
                     >
                       Bot 补满
+                    </button>
+                    <button
+                        disabled={!isHost}
+                        onClick={() => judgeSpeak(getJudgeText())}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-yellow-400 px-4 py-3 font-bold text-black disabled:bg-gray-600 disabled:text-white"
+                    >
+                      <Volume2 size={18} /> 法官播报
                     </button>
                     <button
                         disabled={!canStart || loading}
@@ -738,7 +868,44 @@ export default function HomePage() {
                         {player.alive ? '存活' : '出局'}
                       </span>
                           </div>
-                          <div className="mt-2 text-xs text-purple-100/60">{player.host ? '房主' : '玩家'}</div>
+                          <div className="mt-2 text-xs text-purple-100/60">{player.host ? '房主 / 法官' : '玩家'}</div>
+
+                          {player.id === myPlayerId && room.phase === 'WAITING' && (
+                              <div className="mt-4 rounded-2xl bg-white/5 p-3">
+                                <div className="mb-2 text-xs font-bold text-purple-100/70">
+                                  重新选择座位
+                                </div>
+                                <div className="grid grid-cols-4 gap-2">
+                                  {Array.from({ length: room.playerCount }, (_, i) => i + 1).map((seat) => {
+                                    const occupiedByOther = room.players.some(
+                                        (item) => item.seatNumber === seat && item.id !== myPlayerId
+                                    );
+                                    const isCurrentSeat = myPlayer?.seatNumber === seat;
+
+                                    return (
+                                        <button
+                                            key={seat}
+                                            type="button"
+                                            disabled={occupiedByOther || isCurrentSeat || movingSeat}
+                                            onClick={() => handleMoveSeat(seat)}
+                                            className={`rounded-xl px-2 py-2 text-xs font-bold ${
+                                                isCurrentSeat
+                                                    ? 'bg-purple-500 text-white'
+                                                    : occupiedByOther
+                                                        ? 'cursor-not-allowed bg-gray-600/50 text-gray-300'
+                                                        : 'bg-white/10 text-purple-100 hover:bg-white/20'
+                                            }`}
+                                        >
+                                          {seat}
+                                        </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="mt-2 text-xs text-purple-100/50">
+                                  灰色代表已有玩家，紫色代表你当前座位。
+                                </div>
+                              </div>
+                          )}
                         </div>
                     ))}
                   </div>
@@ -746,6 +913,70 @@ export default function HomePage() {
               </>
           )}
         </section>
+
+        {showRulesModal && rules && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+              <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 text-black shadow-2xl">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-3xl font-black">狼人杀游戏规则</h2>
+                  <button
+                      onClick={() => setShowRulesModal(false)}
+                      className="rounded-full bg-gray-100 p-2 hover:bg-gray-200"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="mt-6 rounded-3xl bg-purple-50 p-5">
+                  <h3 className="text-xl font-black text-purple-800">法官说明</h3>
+                  <p className="mt-2 text-sm leading-6 text-gray-700">{rules.judgeIntro}</p>
+                  <button
+                      type="button"
+                      onClick={() => judgeSpeak(rules.judgeIntro)}
+                      className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-purple-600 px-4 py-2 text-sm font-bold text-white"
+                  >
+                    <Volume2 size={16} /> 播放说明
+                  </button>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-xl font-black">胜利条件</h3>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    {Object.entries(rules.winCondition || {}).map(([title, value]) => (
+                        <div key={title} className="rounded-2xl bg-gray-100 p-4">
+                          <div className="font-black">{title}</div>
+                          <div className="mt-2 text-sm leading-6 text-gray-700">{value}</div>
+                        </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-xl font-black">夜晚顺序</h3>
+                  <div className="mt-3 space-y-2">
+                    {(rules.nightOrder || []).map((item: string, idx: number) => (
+                        <div key={idx} className="rounded-2xl bg-gray-100 p-3 text-sm leading-6">
+                          {idx + 1}. {item}
+                        </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-xl font-black">角色技能</h3>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {(rules.roles || roles).map((role: RoleInfo) => (
+                        <div key={role.id} className="rounded-2xl border border-gray-200 p-4">
+                          <div className="text-lg font-black">{role.name}</div>
+                          <div className="mt-1 text-xs font-bold text-purple-600">{teamName(role.team)}</div>
+                          <div className="mt-2 text-sm leading-6 text-gray-700">{role.description}</div>
+                        </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+        )}
 
         {confirmCreate && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
