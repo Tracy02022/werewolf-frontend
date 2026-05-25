@@ -137,6 +137,8 @@ export default function HomePage() {
       ? room.customRoles
       : boards.find((board) => board.id === room?.boardId)?.roles;
 
+  const canWitchSeeWolfKill = Boolean(room && !room.witchSaveUsed);
+
   const occupiedSeats = useMemo(() => {
     if (!room) return new Set<number>();
     return new Set(room.players.map((player) => player.seatNumber));
@@ -1020,7 +1022,7 @@ export default function HomePage() {
                   )}
                 </section>
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && myPlayer?.alive && (
+                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && (
                     <section className="mt-6 rounded-3xl border border-red-300/20 bg-red-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Moon className="text-red-200" />
@@ -1030,6 +1032,18 @@ export default function HomePage() {
                       <p className="text-sm leading-6 text-red-100/80">
                         请选择今晚要击杀的玩家座位号。第一个狼人点击的目标生效，后续狼人无法覆盖。灰色代表已出局，红色代表当前已选择的击杀目标。
                       </p>
+
+                      {!myPlayer && (
+                          <div className="mt-3 rounded-2xl bg-yellow-500/20 p-3 text-sm font-bold text-yellow-100">
+                            没有识别到你的玩家身份，请退出房间后用本局昵称重新加入，或点击“返回上局游戏”。
+                          </div>
+                      )}
+
+                      {myPlayer && !myPlayer.alive && (
+                          <div className="mt-3 rounded-2xl bg-gray-500/20 p-3 text-sm font-bold text-gray-100">
+                            你已经出局，不能进行狼人行动。
+                          </div>
+                      )}
 
                       {room.wolfKillTargetSeatNumber && (
                           <div className="mt-3 rounded-2xl bg-red-500/20 p-3 text-sm font-bold text-red-100">
@@ -1074,19 +1088,27 @@ export default function HomePage() {
                         <h2 className="text-2xl font-bold">女巫夜晚行动</h2>
                       </div>
                       <div className="rounded-2xl bg-black/25 p-4 text-sm leading-6 text-purple-100">
-                        今晚狼人击杀目标：<b>{room.wolfKillTargetSeatNumber || '无'} 号</b>
-                        <div className="mt-2 text-xs text-purple-100/70">解药：{room.witchSaveUsed ? '已使用' : '未使用'} / 毒药：{room.witchPoisonUsed ? '已使用' : '未使用'}。同一晚只能使用一种药。</div>
-                        {myPlayer?.seatNumber === room.wolfKillTargetSeatNumber && (
-                            <div className="mt-2 font-bold text-red-200">你今晚中刀，标准规则下女巫不能自救。</div>
+                        {canWitchSeeWolfKill ? (
+                            <>
+                              今晚狼人击杀目标：<b>{room.wolfKillTargetSeatNumber || '无'} 号</b>
+                              {myPlayer?.seatNumber === room.wolfKillTargetSeatNumber && (
+                                  <div className="mt-2 font-bold text-red-200">你今晚中刀，标准规则下女巫不能自救。</div>
+                              )}
+                            </>
+                        ) : (
+                            <div className="font-bold text-purple-100">
+                              解药已经使用过，女巫从现在开始不再得知狼人刀口。你可以选择使用毒药，或选择不用药。
+                            </div>
                         )}
+                        <div className="mt-2 text-xs text-purple-100/70">解药：{room.witchSaveUsed ? '已使用' : '未使用'} / 毒药：{room.witchPoisonUsed ? '已使用' : '未使用'}。同一晚只能使用一种药。</div>
                       </div>
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
                         <button
-                            disabled={witchActionLoading || Boolean(room.witchSaveUsed) || !room.wolfKillTargetSeatNumber || myPlayer?.seatNumber === room.wolfKillTargetSeatNumber}
+                            disabled={witchActionLoading || !canWitchSeeWolfKill || Boolean(room.witchSaveUsed) || !room.wolfKillTargetSeatNumber || myPlayer?.seatNumber === room.wolfKillTargetSeatNumber}
                             onClick={() => handleWitchAction(true, null)}
                             className="rounded-2xl bg-green-500 px-4 py-3 font-bold disabled:bg-gray-600"
                         >
-                          使用解药救 {room.wolfKillTargetSeatNumber || ''} 号
+                          {canWitchSeeWolfKill ? `使用解药救 ${room.wolfKillTargetSeatNumber || ''} 号` : '解药已用，不能查看刀口'}
                         </button>
                         <button
                             disabled={witchActionLoading}
