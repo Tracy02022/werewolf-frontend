@@ -1,151 +1,131 @@
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
 export type Role = string;
 
 export type RoleInfo = {
-  id: string;
-  name: string;
-  team: "WOLF" | "GOOD" | "THIRD_PARTY" | string;
-  description: string;
+    id: string;
+    name: string;
+    team: 'WOLF' | 'GOOD' | 'THIRD_PARTY' | string;
+    description: string;
 };
 
 export type Board = {
-  id: string;
-  name: string;
-  playerCount: number;
-  description: string;
-  roles: Record<string, number>;
+    id: string;
+    name: string;
+    playerCount: number;
+    description: string;
+    roles: Record<string, number>;
 };
 
 export type Player = {
-  id: string;
-  name: string;
-  role?: string;
-  alive: boolean;
-  seatNumber: number;
-  host: boolean;
+    id: string;
+    name: string;
+    role?: string;
+    alive: boolean;
+    seatNumber: number;
+    host: boolean;
 };
 
 export type GameRoom = {
-  roomCode: string;
-  playerCount: number;
-  boardId?: string | null;
-  customMode: boolean;
-  customRoles?: Record<string, number> | null;
-  phase:
-      | "WAITING"
-      | "NIGHT"
-      | "DAY_DISCUSSION"
-      | "VOTING"
-      | "FINISHED"
-      | string;
-  round: number;
-  hostPlayerId: string;
-  players: Player[];
+    roomCode: string;
+    playerCount: number;
+    boardId?: string | null;
+    customMode: boolean;
+    customRoles?: Record<string, number> | null;
+    phase: 'WAITING' | 'NIGHT' | 'DAY_DISCUSSION' | 'VOTING' | 'FINISHED' | string;
+    round: number;
+    hostPlayerId: string;
+    players: Player[];
+    wolfKillTargetSeatNumber?: number | null;
+    wolfKillActorPlayerId?: string | null;
+};
+
+export type RoleLookupResponse = {
+    role: string;
+    roleInfo: RoleInfo;
 };
 
 export type RulesResponse = {
-  judgeIntro: string;
-  nightOrder: string[];
-  winCondition: Record<string, string>;
-  roles: RoleInfo[];
-  boards: Board[];
+    judgeIntro: string;
+    nightOrder: string[];
+    winCondition: Record<string, string>;
+    roles: RoleInfo[];
+    boards: Board[];
 };
 
-async function request<T>(
-    path: string,
-    options?: RequestInit
-): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers || {}),
-    },
-  });
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(options?.headers || {})
+        }
+    });
 
-  if (!res.ok) {
-    const message = await res.text();
-    throw new Error(message || `Request failed: ${res.status}`);
-  }
+    if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || `Request failed: ${res.status}`);
+    }
 
-  return res.json();
+    return res.json();
 }
 
 export const api = {
-  getRoles: () => request<RoleInfo[]>("/api/roles"),
+    getRoles: () => request<RoleInfo[]>('/api/roles'),
 
-  getBoards: (playerCount?: number) =>
-      request<Board[]>(
-          playerCount
-              ? `/api/boards?playerCount=${playerCount}`
-              : "/api/boards"
-      ),
+    getBoards: (playerCount?: number) =>
+        request<Board[]>(playerCount ? `/api/boards?playerCount=${playerCount}` : '/api/boards'),
 
-  getRules: () => request<RulesResponse>("/api/rules"),
+    getRules: () => request<RulesResponse>('/api/rules'),
 
-  createRoom: (payload: {
-    playerCount: number;
-    hostName: string;
-    seatNumber: number;
-    boardId?: string;
-    customMode: boolean;
-    customRoles?: Record<string, number>;
-  }) =>
-      request<GameRoom>("/api/rooms", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-
-  joinRoom: (
-      roomCode: string,
-      playerName: string,
-      seatNumber: number
-  ) =>
-      request<GameRoom>(`/api/rooms/${roomCode}/join`, {
-        method: "POST",
-        body: JSON.stringify({
-          playerName,
-          seatNumber,
+    createRoom: (payload: {
+        playerCount: number;
+        hostName: string;
+        seatNumber: number;
+        boardId?: string;
+        customMode: boolean;
+        customRoles?: Record<string, number>;
+    }) =>
+        request<GameRoom>('/api/rooms', {
+            method: 'POST',
+            body: JSON.stringify(payload)
         }),
-      }),
 
-  moveSeat: (
-      roomCode: string,
-      playerId: string,
-      seatNumber: number
-  ) =>
-      request<GameRoom>(`/api/rooms/${roomCode}/move-seat`, {
-        method: "POST",
-        body: JSON.stringify({
-          playerId,
-          seatNumber,
+    joinRoom: (roomCode: string, playerName: string, seatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/join`, {
+            method: 'POST',
+            body: JSON.stringify({ playerName, seatNumber })
         }),
-      }),
 
-  getRoom: (roomCode: string) =>
-      request<GameRoom>(`/api/rooms/${roomCode}`),
+    moveSeat: (roomCode: string, playerId: string, seatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/move-seat`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, seatNumber })
+        }),
 
-  fillBots: (roomCode: string) =>
-      request<GameRoom>(`/api/rooms/${roomCode}/fill-bots`, {
-        method: "POST",
-      }),
+    wolfKill: (roomCode: string, playerId: string, targetSeatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/wolf-kill`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, targetSeatNumber })
+        }),
 
-  startGame: (roomCode: string, playerId: string) =>
-      request<GameRoom>(`/api/rooms/${roomCode}/start`, {
-        method: "POST",
-        body: JSON.stringify({ playerId }),
-      }),
+    getRoom: (roomCode: string) => request<GameRoom>(`/api/rooms/${roomCode}`),
 
-  nextPhase: (roomCode: string, playerId: string) =>
-      request<GameRoom>(`/api/rooms/${roomCode}/next-phase`, {
-        method: "POST",
-        body: JSON.stringify({ playerId }),
-      }),
+    fillBots: (roomCode: string) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/fill-bots`, { method: 'POST' }),
 
-  getMyRole: (roomCode: string, playerId: string) =>
-      request<Player>(
-          `/api/rooms/${roomCode}/players/${playerId}/role`
-      ),
+    startGame: (roomCode: string, playerId: string) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/start`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId })
+        }),
+
+    nextPhase: (roomCode: string, playerId: string) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/next-phase`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId })
+        }),
+
+    getMyRole: (roomCode: string, playerId: string) =>
+        request<RoleLookupResponse>(`/api/rooms/${roomCode}/players/${playerId}/role`)
 };
