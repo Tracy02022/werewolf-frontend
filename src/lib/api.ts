@@ -42,12 +42,16 @@ export type GameRoom = {
     wolfKillActorPlayerId?: string | null;
     witchSavedWolfKill?: boolean;
     witchPoisonTargetSeatNumber?: number | null;
+    witchSaveUsed?: boolean;
+    witchPoisonUsed?: boolean;
     nightDeathSeatNumbers?: number[];
     nightDeathMessage?: string;
     firstDayNightReportReleased?: boolean;
     hunterCanShootSeatNumbers?: number[];
     seerCheckedSeatNumber?: number | null;
     seerCheckedTeam?: string | null;
+    seerCheckedRole?: string | null;
+    seerCheckedRoleName?: string | null;
     mechanicalWolfLearnedSeatNumber?: number | null;
     mechanicalWolfLearnedRole?: string | null;
     mechanicalWolfLearnedRoleName?: string | null;

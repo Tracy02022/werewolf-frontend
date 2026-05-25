@@ -1075,13 +1075,14 @@ export default function HomePage() {
                       </div>
                       <div className="rounded-2xl bg-black/25 p-4 text-sm leading-6 text-purple-100">
                         今晚狼人击杀目标：<b>{room.wolfKillTargetSeatNumber || '无'} 号</b>
+                        <div className="mt-2 text-xs text-purple-100/70">解药：{room.witchSaveUsed ? '已使用' : '未使用'} / 毒药：{room.witchPoisonUsed ? '已使用' : '未使用'}。同一晚只能使用一种药。</div>
                         {myPlayer?.seatNumber === room.wolfKillTargetSeatNumber && (
                             <div className="mt-2 font-bold text-red-200">你今晚中刀，标准规则下女巫不能自救。</div>
                         )}
                       </div>
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
                         <button
-                            disabled={witchActionLoading || !room.wolfKillTargetSeatNumber || myPlayer?.seatNumber === room.wolfKillTargetSeatNumber}
+                            disabled={witchActionLoading || Boolean(room.witchSaveUsed) || !room.wolfKillTargetSeatNumber || myPlayer?.seatNumber === room.wolfKillTargetSeatNumber}
                             onClick={() => handleWitchAction(true, null)}
                             className="rounded-2xl bg-green-500 px-4 py-3 font-bold disabled:bg-gray-600"
                         >
@@ -1101,7 +1102,7 @@ export default function HomePage() {
                             <button
                                 key={player.id}
                                 type="button"
-                                disabled={witchActionLoading || !player.alive}
+                                disabled={witchActionLoading || Boolean(room.witchPoisonUsed) || !player.alive}
                                 onClick={() => handleWitchAction(false, player.seatNumber)}
                                 className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-purple-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
                             >
@@ -1113,7 +1114,7 @@ export default function HomePage() {
                     </section>
                 )}
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'SEER' && myPlayer?.alive && isMyRoleSeer && (
+                {room.phase === 'NIGHT' && myPlayer?.alive && isMyRoleSeer && (room.currentNightAction === 'SEER' || Boolean(room.seerCheckedSeatNumber)) && (
                     <section className="mt-6 rounded-3xl border border-blue-300/20 bg-blue-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Eye className="text-blue-200" />
@@ -1124,7 +1125,7 @@ export default function HomePage() {
                       </p>
                       {room.seerCheckedSeatNumber && (
                           <div className="mt-3 rounded-2xl bg-blue-500/20 p-4 text-sm font-bold text-blue-100">
-                            你查验了 {room.seerCheckedSeatNumber} 号，结果是：{room.seerCheckedTeam}
+                            你查验了 {room.seerCheckedSeatNumber} 号，身份是：{room.seerCheckedRoleName || room.seerCheckedRole}，阵营结果：{room.seerCheckedTeam}
                           </div>
                       )}
                       <div className="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
@@ -1132,7 +1133,7 @@ export default function HomePage() {
                             <button
                                 key={player.id}
                                 type="button"
-                                disabled={seerActionLoading || !player.alive || Boolean(room.seerCheckedSeatNumber)}
+                                disabled={seerActionLoading || room.currentNightAction !== 'SEER' || !player.alive || Boolean(room.seerCheckedSeatNumber)}
                                 onClick={() => handleSeerAction(player.seatNumber)}
                                 className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-blue-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
                             >
