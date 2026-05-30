@@ -108,6 +108,7 @@ export default function HomePage() {
   const [skipNightActionLoading, setSkipNightActionLoading] = useState(false);
   const [voteOutLoading, setVoteOutLoading] = useState(false);
   const lastJudgeSpeakKeyRef = useRef('');
+  const judgeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
 
@@ -279,13 +280,28 @@ export default function HomePage() {
 
 
   useEffect(() => {
-    if (!room) return;
+    if (!room) {
+      lastJudgeSpeakKeyRef.current = '';
+      return;
+    }
+
+    const shouldAutoSpeak =
+        room.phase === 'NIGHT' ||
+        room.phase === 'SHERIFF_ELECTION' ||
+        room.phase === 'DAY_DISCUSSION' ||
+        room.phase === 'VOTING' ||
+        room.phase === 'FINISHED';
+
+    if (!shouldAutoSpeak) return;
 
     const speakKey = `${room.roomCode}-${room.phase}-${room.round}-${room.currentNightAction || ''}-${room.firstDayNightReportReleased ? 'reported' : 'hidden'}`;
     if (lastJudgeSpeakKeyRef.current === speakKey) return;
 
     lastJudgeSpeakKeyRef.current = speakKey;
-    judgeSpeak(getJudgeTextForRoom(room));
+
+    const text = getJudgeTextForRoom(room);
+    const voiceKey = getVoiceKeyForRoom(room);
+    judgeSpeak(text, voiceKey);
   }, [room?.roomCode, room?.phase, room?.round, room?.currentNightAction, room?.firstDayNightReportReleased]);
 
   useEffect(() => {
@@ -488,18 +504,36 @@ export default function HomePage() {
   };
 
   const judgeSpeak = (text: string, voiceKey?: string) => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !text) return;
 
     const key = voiceKey || (room ? getVoiceKeyForRoom(room) : 'judge_default');
-    const audio = new Audio(`/voices/judge/zh/${key}.mp3`);
+    const audioPath = `/voices/judge/zh/${key}.mp3`;
+    let fallbackUsed = false;
 
-    audio.oncanplaythrough = () => {
-      window.speechSynthesis?.cancel();
-      audio.play().catch(() => speakWithAi(text));
+    const fallbackToAi = () => {
+      if (fallbackUsed) return;
+      fallbackUsed = true;
+      speakWithAi(text);
     };
 
-    audio.onerror = () => speakWithAi(text);
-    audio.load();
+    try {
+      if (judgeAudioRef.current) {
+        judgeAudioRef.current.pause();
+        judgeAudioRef.current.currentTime = 0;
+      }
+
+      const audio = new Audio(audioPath);
+      judgeAudioRef.current = audio;
+      audio.preload = 'auto';
+      audio.onplay = () => {
+        window.speechSynthesis?.cancel();
+      };
+      audio.onerror = fallbackToAi;
+
+      audio.play().catch(fallbackToAi);
+    } catch {
+      fallbackToAi();
+    }
   };
 
   const speakWithAi = (text: string) => {
@@ -508,12 +542,13 @@ export default function HomePage() {
       return;
     }
 
+    window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
     utterance.rate = 0.92;
     utterance.pitch = 1;
 
-    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   };
 
