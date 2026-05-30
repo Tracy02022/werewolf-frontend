@@ -38,6 +38,8 @@ export type GameRoom = {
     players: Player[];
     currentNightAction?: 'NONE' | 'WOLF_KILL' | 'WITCH' | 'SEER' | 'MECHANICAL_WOLF' | 'HUNTER_CHECK' | 'FINISHED' | string;
     nightActionEndsAtEpochMs?: number;
+    currentNightActionCompleted?: boolean;
+    nextNightActionAtEpochMs?: number;
     wolfKillTargetSeatNumber?: number | null;
     wolfKillActorPlayerId?: string | null;
     witchSavedWolfKill?: boolean;
