@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Crown, DoorOpen, Eye, Moon, Play, RefreshCcw, Sparkles, Users, X, Volume2, BookOpen } from 'lucide-react';
 import { api, Board, GameRoom, RoleInfo, RulesResponse } from '@/lib/api';
 
@@ -34,39 +34,6 @@ const phaseStyleMap: Record<string, string> = {
 const playerCounts = [9, 10, 11, 12, 13, 14, 15, 16];
 const customCounts = [9, 10, 11, 12, 13, 14, 15, 16];
 const boardCounts = [12];
-
-type JudgeVoiceKey =
-    | 'WAITING'
-    | 'NIGHT_WOLF'
-    | 'NIGHT_WITCH'
-    | 'NIGHT_SEER'
-    | 'NIGHT_MECHANICAL_WOLF'
-    | 'NIGHT_HUNTER'
-    | 'SHERIFF_ELECTION'
-    | 'DAY_DISCUSSION'
-    | 'VOTING'
-    | 'FINISHED'
-    | 'GENERIC';
-
-type JudgeVoiceConfig = {
-  text: string;
-  // 后期要换真人录音，只需要把 audio 填成 public 目录下的 mp3 路径，例如：'/voices/judge/zh/night_wolf.mp3'
-  audio?: string;
-};
-
-const JUDGE_VOICE_MAP: Record<JudgeVoiceKey, JudgeVoiceConfig> = {
-  WAITING: { text: '等待玩家加入，房主可在人数满后开始游戏。' },
-  NIGHT_WOLF: { text: '天黑请闭眼。狼人请睁眼。请选择今晚击杀目标。' },
-  NIGHT_WITCH: { text: '狼人请闭眼。女巫请睁眼。请查看你的页面，并选择是否使用解药或毒药。女巫中刀不能自救。' },
-  NIGHT_SEER: { text: '女巫请闭眼。预言家或通灵师请睁眼，请选择一名玩家进行查验。' },
-  NIGHT_MECHANICAL_WOLF: { text: '预言家请闭眼。机械狼请睁眼，请选择一名玩家学习技能。' },
-  NIGHT_HUNTER: { text: '猎人请睁眼。请查看你的页面确认开枪状态。' },
-  SHERIFF_ELECTION: { text: '天亮了。第一天先进行上警竞选和警长选择，暂不公布夜间倒牌信息。' },
-  DAY_DISCUSSION: { text: '现在公布夜间信息。现在进入白天发言阶段。' },
-  VOTING: { text: '开始投票，放逐一名玩家。' },
-  FINISHED: { text: '游戏结束，请查看胜负结果。' },
-  GENERIC: { text: '请继续游戏。' }
-};
 
 function teamName(team: string) {
   if (team === 'WOLF') return '狼人阵营';
@@ -134,10 +101,11 @@ export default function HomePage() {
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [movingSeat, setMovingSeat] = useState(false);
   const [wolfActionLoading, setWolfActionLoading] = useState(false);
-  const [nightSecondsLeft, setNightSecondsLeft] = useState(0);
+  const [guardActionLoading, setGuardActionLoading] = useState(false);
   const [witchActionLoading, setWitchActionLoading] = useState(false);
   const [seerActionLoading, setSeerActionLoading] = useState(false);
   const [mechanicalWolfLoading, setMechanicalWolfLoading] = useState(false);
+  const lastJudgeSpeakKeyRef = useRef('');
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
 
@@ -184,9 +152,13 @@ export default function HomePage() {
 
   const isMyRoleWolf = myRole?.team === 'WOLF';
   const isMyRoleWitch = myRole?.id === 'WITCH';
-  const isMyRoleSeer = ['SEER', 'SKY_EYE', 'AWAKENED_SEER', 'PSYCHIC'].includes(myRole?.id || '');
+  const isMyRoleGuard = ['GUARD', 'AWAKENED_GUARD'].includes(myRole?.id || '');
+  const isMyRoleSeer = ['SEER', 'SKY_EYE', 'AWAKENED_SEER'].includes(myRole?.id || '');
+  const isMyRolePsychic = myRole?.id === 'PSYCHIC';
   const isMyRoleHunter = myRole?.id === 'HUNTER';
   const isMyRoleMechanicalWolf = myRole?.id === 'MECHANICAL_WOLF';
+  const isMyRoleWhiteGod = ['IDIOT', 'AWAKENED_FOOL'].includes(myRole?.id || '');
+  const isMyRoleMixedBlood = ['MIXED_BLOOD', 'SECRET_ADMIRER'].includes(myRole?.id || '');
 
   // 操作区不再强依赖 myRole，因为身份接口可能比房间轮询慢。
   // 前端负责让当前阶段可点；后端负责严格校验是否真的是狼人/女巫/预言家/机械狼。
@@ -292,28 +264,14 @@ export default function HomePage() {
 
 
   useEffect(() => {
-    if (!room || room.phase !== 'NIGHT') {
-      setNightSecondsLeft(0);
-      return;
-    }
+    if (!room) return;
 
-    const tick = () => {
-      const targetTime = room.currentNightActionCompleted
-          ? room.nextNightActionAtEpochMs
-          : room.nightActionEndsAtEpochMs;
+    const speakKey = `${room.roomCode}-${room.phase}-${room.round}-${room.currentNightAction || ''}-${room.firstDayNightReportReleased ? 'reported' : 'hidden'}`;
+    if (lastJudgeSpeakKeyRef.current === speakKey) return;
 
-      if (!targetTime) {
-        setNightSecondsLeft(0);
-        return;
-      }
-
-      setNightSecondsLeft(Math.max(0, Math.ceil((targetTime - Date.now()) / 1000)));
-    };
-
-    tick();
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, [room?.roomCode, room?.phase, room?.currentNightAction, room?.currentNightActionCompleted, room?.nightActionEndsAtEpochMs, room?.nextNightActionAtEpochMs]);
+    lastJudgeSpeakKeyRef.current = speakKey;
+    judgeSpeak(getJudgeTextForRoom(room));
+  }, [room?.roomCode, room?.phase, room?.round, room?.currentNightAction, room?.firstDayNightReportReleased]);
 
   useEffect(() => {
     if (!room || !myPlayerId || room.phase === 'WAITING') {
@@ -436,12 +394,25 @@ export default function HomePage() {
           .join(' / ');
 
   const getNightActionName = (action?: string) => {
-    if (action === 'WOLF_KILL') return '狼人行动';
+    if (action === 'GUARD') return '守卫行动';
+    if (action === 'MECHANICAL_WOLF') return '机械狼学习技能';
+    if (action === 'WOLF_KILL') return '狼人刀人';
     if (action === 'WITCH') return '女巫行动';
-    if (action === 'SEER') return '预言家行动';
-    if (action === 'MECHANICAL_WOLF') return '机械狼行动';
+    if (action === 'PSYCHIC') return '通灵师查验';
+    if (action === 'SEER') return '预言家查验';
     if (action === 'HUNTER_CHECK') return '猎人状态确认';
+    if (action === 'WHITE_GOD_CHECK') return '白神确认';
+    if (action === 'MIXED_BLOOD_CHECK') return '混子确认';
     return '夜间流程';
+  };
+
+  const getVoiceKeyForRoom = (targetRoom: GameRoom) => {
+    if (targetRoom.phase === 'SHERIFF_ELECTION') return 'day_sheriff_election';
+    if (targetRoom.phase === 'DAY_DISCUSSION') return 'day_discussion';
+    if (targetRoom.phase !== 'NIGHT') return `phase_${targetRoom.phase?.toLowerCase() || 'unknown'}`;
+
+    const action = targetRoom.currentNightAction || 'NONE';
+    return `night_${action.toLowerCase()}`;
   };
 
   const getJudgeTextForRoom = (targetRoom: GameRoom) => {
@@ -462,60 +433,61 @@ export default function HomePage() {
       return phaseDescriptionMap[targetRoom.phase] || '请继续游戏。';
     }
 
-    if (action === 'WOLF_KILL') {
-      return JUDGE_VOICE_MAP.NIGHT_WOLF.text;
-    }
-
-    if (action === 'WITCH') {
-      return JUDGE_VOICE_MAP.NIGHT_WITCH.text;
-    }
-
-    if (action === 'SEER') {
-      return JUDGE_VOICE_MAP.NIGHT_SEER.text;
+    if (action === 'GUARD') {
+      return '天黑请闭眼。守卫请睁眼，请选择今晚要守护的玩家。';
     }
 
     if (action === 'MECHANICAL_WOLF') {
-      return JUDGE_VOICE_MAP.NIGHT_MECHANICAL_WOLF.text;
+      return '守卫请闭眼。机械狼请睁眼，请选择一名玩家学习技能。';
+    }
+
+    if (action === 'WOLF_KILL') {
+      return '机械狼请闭眼。狼人请睁眼，请选择今晚击杀目标。';
+    }
+
+    if (action === 'WITCH') {
+      return '狼人请闭眼。女巫请睁眼。请查看你的页面，并选择是否使用解药或毒药。';
+    }
+
+    if (action === 'PSYCHIC') {
+      return '女巫请闭眼。通灵师请睁眼，请选择一名玩家查验具体身份。';
+    }
+
+    if (action === 'SEER') {
+      return '通灵师请闭眼。预言家请睁眼，请选择一名玩家查验阵营。';
     }
 
     if (action === 'HUNTER_CHECK') {
-      return JUDGE_VOICE_MAP.NIGHT_HUNTER.text;
+      return '预言家请闭眼。猎人请睁眼，请查看你的页面确认开枪状态。';
+    }
+
+    if (action === 'WHITE_GOD_CHECK') {
+      return '猎人请闭眼。白神请睁眼，请确认你的身份信息。';
+    }
+
+    if (action === 'MIXED_BLOOD_CHECK') {
+      return '白神请闭眼。混子请睁眼，请确认你的身份信息。';
     }
 
     return '夜间行动结束。';
   };
 
-  const getVoiceKeyForRoom = (targetRoom: GameRoom): JudgeVoiceKey => {
-    if (targetRoom.phase === 'SHERIFF_ELECTION') return 'SHERIFF_ELECTION';
-    if (targetRoom.phase === 'DAY_DISCUSSION') return 'DAY_DISCUSSION';
-    if (targetRoom.phase === 'VOTING') return 'VOTING';
-    if (targetRoom.phase === 'FINISHED') return 'FINISHED';
-    if (targetRoom.phase !== 'NIGHT') return 'GENERIC';
+  const judgeSpeak = (text: string, voiceKey?: string) => {
+    if (typeof window === 'undefined') return;
 
-    if (targetRoom.currentNightAction === 'WOLF_KILL') return 'NIGHT_WOLF';
-    if (targetRoom.currentNightAction === 'WITCH') return 'NIGHT_WITCH';
-    if (targetRoom.currentNightAction === 'SEER') return 'NIGHT_SEER';
-    if (targetRoom.currentNightAction === 'MECHANICAL_WOLF') return 'NIGHT_MECHANICAL_WOLF';
-    if (targetRoom.currentNightAction === 'HUNTER_CHECK') return 'NIGHT_HUNTER';
-    return 'GENERIC';
+    const key = voiceKey || (room ? getVoiceKeyForRoom(room) : 'judge_default');
+    const audio = new Audio(`/voices/judge/zh/${key}.mp3`);
+
+    audio.oncanplaythrough = () => {
+      window.speechSynthesis?.cancel();
+      audio.play().catch(() => speakWithAi(text));
+    };
+
+    audio.onerror = () => speakWithAi(text);
+    audio.load();
   };
 
-  const judgeSpeakByKey = (key: JudgeVoiceKey, overrideText?: string) => {
-    const config = JUDGE_VOICE_MAP[key] || JUDGE_VOICE_MAP.GENERIC;
-    const text = overrideText || config.text;
-
-    // 后期真人录音替换点：只要在 JUDGE_VOICE_MAP 里给对应 key 配 audio，
-    // 例如 audio: '/voices/judge/zh/night_wolf.mp3'，这里会优先播放真人录音。
-    if (typeof window !== 'undefined' && config.audio) {
-      const audio = new Audio(config.audio);
-      audio.play().catch(() => judgeSpeakWithAI(text));
-      return;
-    }
-
-    judgeSpeakWithAI(text);
-  };
-
-  const judgeSpeakWithAI = (text: string) => {
+  const speakWithAi = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       setError('当前浏览器不支持语音播报');
       return;
@@ -528,10 +500,6 @@ export default function HomePage() {
 
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
-  };
-
-  const judgeSpeak = (text: string, roomForVoice?: GameRoom) => {
-    judgeSpeakByKey(roomForVoice ? getVoiceKeyForRoom(roomForVoice) : 'GENERIC', text);
   };
 
   const handleMoveSeat = async (seatNumber: number) => {
@@ -550,6 +518,21 @@ export default function HomePage() {
     }
   };
 
+
+  const handleGuardAction = async (targetSeatNumber: number) => {
+    if (!room || !myPlayerId) return;
+    setGuardActionLoading(true);
+    setError('');
+    try {
+      const updatedRoom = await api.guardAction(room.roomCode, myPlayerId, targetSeatNumber);
+      setRoom(updatedRoom);
+    } catch (err: any) {
+      setError(err.message || '守卫行动失败');
+    } finally {
+      setGuardActionLoading(false);
+    }
+  };
+
   const handleWolfKill = async (targetSeatNumber: number) => {
     if (!room || !myPlayerId) return;
 
@@ -559,7 +542,6 @@ export default function HomePage() {
     try {
       const updatedRoom = await api.wolfKill(room.roomCode, myPlayerId, targetSeatNumber);
       setRoom(updatedRoom);
-      judgeSpeak(getJudgeTextForRoom(updatedRoom), updatedRoom);
     } catch (err: any) {
       setError(err.message || '狼人行动失败');
     } finally {
@@ -579,7 +561,6 @@ export default function HomePage() {
     try {
       const updatedRoom = await api.advanceNightAction(room.roomCode, myPlayerId);
       setRoom(updatedRoom);
-      judgeSpeak(getJudgeTextForRoom(updatedRoom), updatedRoom);
     } catch (err: any) {
       setError(err.message || '进入下一夜间操作失败');
     } finally {
@@ -594,7 +575,6 @@ export default function HomePage() {
     try {
       const updatedRoom = await api.witchAction(room.roomCode, myPlayerId, useSave, poisonTargetSeatNumber || null);
       setRoom(updatedRoom);
-      judgeSpeak(getJudgeTextForRoom(updatedRoom), updatedRoom);
     } catch (err: any) {
       setError(err.message || '女巫行动失败');
     } finally {
@@ -609,7 +589,6 @@ export default function HomePage() {
     try {
       const updatedRoom = await api.seerAction(room.roomCode, myPlayerId, targetSeatNumber);
       setRoom(updatedRoom);
-      judgeSpeak(getJudgeTextForRoom(updatedRoom), updatedRoom);
     } catch (err: any) {
       setError(err.message || '预言家操作失败');
     } finally {
@@ -624,7 +603,6 @@ export default function HomePage() {
     try {
       const updatedRoom = await api.mechanicalWolfLearn(room.roomCode, myPlayerId, targetSeatNumber);
       setRoom(updatedRoom);
-      judgeSpeak(getJudgeTextForRoom(updatedRoom), updatedRoom);
     } catch (err: any) {
       setError(err.message || '机械狼学习失败');
     } finally {
@@ -1013,8 +991,7 @@ export default function HomePage() {
                     {room.phase === 'NIGHT' && (
                         <div className="mt-4 rounded-2xl bg-black/25 px-4 py-3 text-sm font-bold">
                           当前夜间操作：{getNightActionName(room.currentNightAction)}
-                          {room.currentNightActionCompleted && nightSecondsLeft > 0 && <span> ｜ 已完成，{nightSecondsLeft} 秒后进入下一环节</span>}
-                          {!room.currentNightActionCompleted && nightSecondsLeft > 0 && <span> ｜ 倒计时 {nightSecondsLeft} 秒</span>}
+                          {room.nightActionCompleted && <span> ｜ 已完成，15 秒后自动进入下一环节</span>}
                         </div>
                     )}
                     {room.phase === 'DAY_DISCUSSION' && room.nightDeathMessage && (room.round !== 1 || room.firstDayNightReportReleased) && (
@@ -1037,7 +1014,7 @@ export default function HomePage() {
                     </button>
                     <button
                         disabled={!isHost}
-                        onClick={() => room ? judgeSpeak(getJudgeText(), room) : judgeSpeak(getJudgeText())}
+                        onClick={() => judgeSpeak(getJudgeText())}
                         className="inline-flex items-center justify-center gap-2 rounded-2xl bg-yellow-400 px-4 py-3 font-bold text-black disabled:bg-gray-600 disabled:text-white"
                     >
                       <Volume2 size={18} /> 法官播报
@@ -1091,6 +1068,38 @@ export default function HomePage() {
                   )}
                 </section>
 
+                {room.phase === 'NIGHT' && room.currentNightAction === 'GUARD' && myPlayer?.alive && isMyRoleGuard && (
+                    <section className="mt-6 rounded-3xl border border-emerald-300/20 bg-emerald-500/10 p-5 shadow-2xl backdrop-blur">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Sparkles className="text-emerald-200" />
+                        <h2 className="text-2xl font-bold">守卫夜晚行动</h2>
+                      </div>
+                      <p className="text-sm leading-6 text-emerald-100/80">
+                        请选择今晚要守护的玩家。守卫可以守自己，但不能连续两晚守护同一名玩家。
+                      </p>
+                      {room.guardTargetSeatNumber && (
+                          <div className="mt-3 rounded-2xl bg-emerald-500/20 p-4 text-sm font-bold text-emerald-100">
+                            你今晚守护了 {room.guardTargetSeatNumber} 号。15 秒后自动进入下一环节。
+                          </div>
+                      )}
+                      <div className="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
+                        {room.players.map((player) => (
+                            <button
+                                key={player.id}
+                                type="button"
+                                disabled={guardActionLoading || !player.alive || Boolean(room.guardTargetSeatNumber) || room.previousGuardTargetSeatNumber === player.seatNumber}
+                                onClick={() => handleGuardAction(player.seatNumber)}
+                                className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-emerald-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
+                            >
+                              {player.seatNumber}号
+                              <div className="truncate text-xs font-normal">{player.name}</div>
+                              {room.previousGuardTargetSeatNumber === player.seatNumber && <div className="text-[10px] text-red-200">上晚已守</div>}
+                            </button>
+                        ))}
+                      </div>
+                    </section>
+                )}
+
                 {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && (
                     <section className="mt-6 rounded-3xl border border-red-300/20 bg-red-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
@@ -1128,7 +1137,7 @@ export default function HomePage() {
                               <button
                                   key={player.id}
                                   type="button"
-                                  disabled={room.currentNightActionCompleted || !canWolfAct || !player.alive || wolfActionLoading}
+                                  disabled={!canWolfAct || !player.alive || wolfActionLoading}
                                   onClick={() => handleWolfKill(player.seatNumber)}
                                   className={`rounded-2xl px-3 py-4 text-center font-black ${
                                       selected
@@ -1173,14 +1182,14 @@ export default function HomePage() {
                       </div>
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
                         <button
-                            disabled={room.currentNightActionCompleted || witchActionLoading || !canWitchSeeWolfKill || Boolean(room.witchSaveUsed) || !room.wolfKillTargetSeatNumber || myPlayer?.seatNumber === room.wolfKillTargetSeatNumber}
+                            disabled={witchActionLoading || !canWitchSeeWolfKill || Boolean(room.witchSaveUsed) || !room.wolfKillTargetSeatNumber || myPlayer?.seatNumber === room.wolfKillTargetSeatNumber}
                             onClick={() => handleWitchAction(true, null)}
                             className="rounded-2xl bg-green-500 px-4 py-3 font-bold disabled:bg-gray-600"
                         >
                           {canWitchSeeWolfKill ? `使用解药救 ${room.wolfKillTargetSeatNumber || ''} 号` : '解药已用，不能查看刀口'}
                         </button>
                         <button
-                            disabled={room.currentNightActionCompleted || witchActionLoading}
+                            disabled={witchActionLoading}
                             onClick={() => handleWitchAction(false, null)}
                             className="rounded-2xl bg-white/15 px-4 py-3 font-bold hover:bg-white/20 disabled:bg-gray-600"
                         >
@@ -1193,7 +1202,7 @@ export default function HomePage() {
                             <button
                                 key={player.id}
                                 type="button"
-                                disabled={room.currentNightActionCompleted || witchActionLoading || Boolean(room.witchPoisonUsed) || !player.alive}
+                                disabled={witchActionLoading || Boolean(room.witchPoisonUsed) || !player.alive}
                                 onClick={() => handleWitchAction(false, player.seatNumber)}
                                 className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-purple-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
                             >
@@ -1205,18 +1214,20 @@ export default function HomePage() {
                     </section>
                 )}
 
-                {room.phase === 'NIGHT' && myPlayer?.alive && isMyRoleSeer && (room.currentNightAction === 'SEER' || Boolean(room.seerCheckedSeatNumber)) && (
+                {room.phase === 'NIGHT' && myPlayer?.alive && (isMyRoleSeer || isMyRolePsychic) && ((room.currentNightAction === 'SEER' && isMyRoleSeer) || (room.currentNightAction === 'PSYCHIC' && isMyRolePsychic) || Boolean(room.seerCheckedSeatNumber)) && (
                     <section className="mt-6 rounded-3xl border border-blue-300/20 bg-blue-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Eye className="text-blue-200" />
-                        <h2 className="text-2xl font-bold">预言家夜晚行动</h2>
+                        <h2 className="text-2xl font-bold">{isMyRolePsychic ? '通灵师夜晚行动' : '预言家夜晚行动'}</h2>
                       </div>
                       <p className="text-sm leading-6 text-blue-100/80">
-                        请选择要查验的玩家。只有预言家提交会成功；如果你不是预言家，后端会拒绝本次操作。
+                        {isMyRolePsychic ? '通灵师会看到具体身份；如果目标是机械狼且已学习身份，会显示机械狼学习到的身份。' : '预言家只会看到阵营结果：好人或狼人，不显示具体身份。'}
                       </p>
                       {room.seerCheckedSeatNumber && (
                           <div className="mt-3 rounded-2xl bg-blue-500/20 p-4 text-sm font-bold text-blue-100">
-                            你查验了 {room.seerCheckedSeatNumber} 号，结果是：{room.seerCheckedRoleName || room.seerCheckedTeam || room.seerCheckedRole}
+                            {isMyRolePsychic
+                                ? <>你查验了 {room.seerCheckedSeatNumber} 号，具体身份是：{room.seerCheckedRoleName || room.seerCheckedRole}</>
+                                : <>你查验了 {room.seerCheckedSeatNumber} 号，结果是：{room.seerCheckedTeam}</>}
                           </div>
                       )}
                       <div className="mt-4 grid grid-cols-3 gap-3 md:grid-cols-6">
@@ -1224,7 +1235,7 @@ export default function HomePage() {
                             <button
                                 key={player.id}
                                 type="button"
-                                disabled={room.currentNightActionCompleted || seerActionLoading || room.currentNightAction !== 'SEER' || !player.alive || Boolean(room.seerCheckedSeatNumber)}
+                                disabled={seerActionLoading || !['SEER', 'PSYCHIC'].includes(room.currentNightAction || '') || !player.alive || Boolean(room.seerCheckedSeatNumber)}
                                 onClick={() => handleSeerAction(player.seatNumber)}
                                 className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-blue-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
                             >
@@ -1244,7 +1255,7 @@ export default function HomePage() {
                       </div>
                       {room.mechanicalWolfLearnedSeatNumber && (
                           <div className="mb-4 rounded-2xl bg-orange-500/20 p-4 text-sm font-bold text-orange-100">
-                            你学习了 {room.mechanicalWolfLearnedSeatNumber} 号玩家，身份是：{room.mechanicalWolfLearnedRoleName || room.mechanicalWolfLearnedRole}
+                            你学习了 {room.mechanicalWolfLearnedSeatNumber} 号玩家，当前学习身份是：{room.mechanicalWolfLearnedRoleName || room.mechanicalWolfLearnedRole}。15 秒后自动进入狼人环节。
                           </div>
                       )}
                       <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
@@ -1252,7 +1263,7 @@ export default function HomePage() {
                             <button
                                 key={player.id}
                                 type="button"
-                                disabled={room.currentNightActionCompleted || mechanicalWolfLoading || !player.alive || player.id === myPlayerId || Boolean(room.mechanicalWolfLearnedSeatNumber)}
+                                disabled={mechanicalWolfLoading || !player.alive || player.id === myPlayerId || Boolean(room.mechanicalWolfLearnedSeatNumber)}
                                 onClick={() => handleMechanicalWolfLearn(player.seatNumber)}
                                 className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-orange-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
                             >
@@ -1273,9 +1284,29 @@ export default function HomePage() {
                             : myPlayer && room.witchPoisonTargetSeatNumber === myPlayer.seatNumber
                                 ? '你可能被毒死。被女巫毒死不能开枪。'
                                 : '当前没有死亡开枪提示；若白天被放逐或被狼刀倒牌，一般可以开枪。'}
+                        <div className="mt-2 text-xs text-yellow-100/70">本环节无需操作，15 秒后自动进入下一环节。</div>
                       </div>
                     </section>
                 )}
+
+                {room.phase === 'NIGHT' && room.currentNightAction === 'WHITE_GOD_CHECK' && myPlayer?.alive && isMyRoleWhiteGod && (
+                    <section className="mt-6 rounded-3xl border border-pink-300/20 bg-pink-500/10 p-5 shadow-2xl backdrop-blur">
+                      <h2 className="text-2xl font-bold">白神睁眼确认</h2>
+                      <div className="mt-3 rounded-2xl bg-black/25 p-4 text-sm font-bold text-pink-100">
+                        请确认你的身份信息。本环节没有技能释放，15 秒后自动进入下一环节。
+                      </div>
+                    </section>
+                )}
+
+                {room.phase === 'NIGHT' && room.currentNightAction === 'MIXED_BLOOD_CHECK' && myPlayer?.alive && isMyRoleMixedBlood && (
+                    <section className="mt-6 rounded-3xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-5 shadow-2xl backdrop-blur">
+                      <h2 className="text-2xl font-bold">混子睁眼确认</h2>
+                      <div className="mt-3 rounded-2xl bg-black/25 p-4 text-sm font-bold text-fuchsia-100">
+                        请确认你的身份信息。本环节没有技能释放，15 秒后自动进入下一环节。
+                      </div>
+                    </section>
+                )}
+
 
                 {currentRoomRoles && (
                     <section className="mt-6 rounded-3xl border border-white/10 bg-white/10 p-5 shadow-2xl backdrop-blur">

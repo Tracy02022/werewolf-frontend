@@ -36,10 +36,11 @@ export type GameRoom = {
     round: number;
     hostPlayerId: string;
     players: Player[];
-    currentNightAction?: 'NONE' | 'WOLF_KILL' | 'WITCH' | 'SEER' | 'MECHANICAL_WOLF' | 'HUNTER_CHECK' | 'FINISHED' | string;
+    currentNightAction?: 'NONE' | 'GUARD' | 'MECHANICAL_WOLF' | 'WOLF_KILL' | 'WITCH' | 'SEER' | 'PSYCHIC' | 'HUNTER_CHECK' | 'WHITE_GOD_CHECK' | 'MIXED_BLOOD_CHECK' | 'FINISHED' | string;
     nightActionEndsAtEpochMs?: number;
-    currentNightActionCompleted?: boolean;
-    nextNightActionAtEpochMs?: number;
+    nightActionCompleted?: boolean;
+    guardTargetSeatNumber?: number | null;
+    previousGuardTargetSeatNumber?: number | null;
     wolfKillTargetSeatNumber?: number | null;
     wolfKillActorPlayerId?: string | null;
     witchSavedWolfKill?: boolean;
@@ -120,6 +121,12 @@ export const api = {
         request<GameRoom>(`/api/rooms/${roomCode}/move-seat`, {
             method: 'POST',
             body: JSON.stringify({ playerId, seatNumber })
+        }),
+
+    guardAction: (roomCode: string, playerId: string, targetSeatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/guard-action`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, targetSeatNumber })
         }),
 
     wolfKill: (roomCode: string, playerId: string, targetSeatNumber: number) =>
