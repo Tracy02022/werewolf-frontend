@@ -105,6 +105,8 @@ export default function HomePage() {
   const [witchActionLoading, setWitchActionLoading] = useState(false);
   const [seerActionLoading, setSeerActionLoading] = useState(false);
   const [mechanicalWolfLoading, setMechanicalWolfLoading] = useState(false);
+  const [skipNightActionLoading, setSkipNightActionLoading] = useState(false);
+  const [voteOutLoading, setVoteOutLoading] = useState(false);
   const lastJudgeSpeakKeyRef = useRef('');
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
@@ -166,6 +168,7 @@ export default function HomePage() {
       room &&
       myPlayerId &&
       myPlayer?.alive &&
+      isMyRoleWolf &&
       room.phase === 'NIGHT' &&
       room.currentNightAction === 'WOLF_KILL' &&
       !room.wolfKillTargetSeatNumber
@@ -607,6 +610,34 @@ export default function HomePage() {
       setError(err.message || '机械狼学习失败');
     } finally {
       setMechanicalWolfLoading(false);
+    }
+  };
+
+  const handleSkipNightAction = async () => {
+    if (!room || !myPlayerId) return;
+    setSkipNightActionLoading(true);
+    setError('');
+    try {
+      const updatedRoom = await api.skipNightAction(room.roomCode, myPlayerId);
+      setRoom(updatedRoom);
+    } catch (err: any) {
+      setError(err.message || '跳过夜间技能失败');
+    } finally {
+      setSkipNightActionLoading(false);
+    }
+  };
+
+  const handleVoteOut = async (targetSeatNumber: number) => {
+    if (!room || !myPlayerId) return;
+    setVoteOutLoading(true);
+    setError('');
+    try {
+      const updatedRoom = await api.voteOut(room.roomCode, myPlayerId, targetSeatNumber);
+      setRoom(updatedRoom);
+    } catch (err: any) {
+      setError(err.message || '标记放逐玩家失败');
+    } finally {
+      setVoteOutLoading(false);
     }
   };
 
@@ -1075,8 +1106,18 @@ export default function HomePage() {
                         <h2 className="text-2xl font-bold">守卫夜晚行动</h2>
                       </div>
                       <p className="text-sm leading-6 text-emerald-100/80">
-                        请选择今晚要守护的玩家。守卫可以守自己，但不能连续两晚守护同一名玩家。
+                        请选择今晚要守护的玩家。守卫可以守自己，但不能连续两晚守护同一名玩家。也可以选择不发动技能。
                       </p>
+                      {!room.guardTargetSeatNumber && (
+                          <button
+                              type="button"
+                              disabled={skipNightActionLoading}
+                              onClick={handleSkipNightAction}
+                              className="mt-3 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                          >
+                            不发动技能，等待下一环节
+                          </button>
+                      )}
                       {room.guardTargetSeatNumber && (
                           <div className="mt-3 rounded-2xl bg-emerald-500/20 p-4 text-sm font-bold text-emerald-100">
                             你今晚守护了 {room.guardTargetSeatNumber} 号。15 秒后自动进入下一环节。
@@ -1100,7 +1141,7 @@ export default function HomePage() {
                     </section>
                 )}
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && (
+                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && myPlayer?.alive && isMyRoleWolf && (
                     <section className="mt-6 rounded-3xl border border-red-300/20 bg-red-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Moon className="text-red-200" />
@@ -1108,8 +1149,18 @@ export default function HomePage() {
                       </div>
 
                       <p className="text-sm leading-6 text-red-100/80">
-                        请选择今晚要击杀的玩家座位号。第一个狼人点击的目标生效，后续狼人无法覆盖。灰色代表已出局，红色代表当前已选择的击杀目标。
+                        请选择今晚要击杀的玩家座位号。第一个狼人点击的目标生效，后续狼人无法覆盖。灰色代表已出局，红色代表当前已选择的击杀目标。也可以选择空刀。
                       </p>
+                      {!room.wolfKillTargetSeatNumber && (
+                          <button
+                              type="button"
+                              disabled={skipNightActionLoading}
+                              onClick={handleSkipNightAction}
+                              className="mt-3 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                          >
+                            不发动技能 / 空刀，等待下一环节
+                          </button>
+                      )}
 
                       {!myPlayer && (
                           <div className="mt-3 rounded-2xl bg-yellow-500/20 p-3 text-sm font-bold text-yellow-100">
@@ -1223,6 +1274,16 @@ export default function HomePage() {
                       <p className="text-sm leading-6 text-blue-100/80">
                         {isMyRolePsychic ? '通灵师会看到具体身份；如果目标是机械狼且已学习身份，会显示机械狼学习到的身份。' : '预言家只会看到阵营结果：好人或狼人，不显示具体身份。'}
                       </p>
+                      {!room.seerCheckedSeatNumber && ['SEER', 'PSYCHIC'].includes(room.currentNightAction || '') && (
+                          <button
+                              type="button"
+                              disabled={skipNightActionLoading}
+                              onClick={handleSkipNightAction}
+                              className="mt-3 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                          >
+                            不发动技能，等待下一环节
+                          </button>
+                      )}
                       {room.seerCheckedSeatNumber && (
                           <div className="mt-3 rounded-2xl bg-blue-500/20 p-4 text-sm font-bold text-blue-100">
                             {isMyRolePsychic
@@ -1253,6 +1314,16 @@ export default function HomePage() {
                         <Sparkles className="text-orange-200" />
                         <h2 className="text-2xl font-bold">机械狼学习技能</h2>
                       </div>
+                      {!room.mechanicalWolfLearnedSeatNumber && (
+                          <button
+                              type="button"
+                              disabled={skipNightActionLoading}
+                              onClick={handleSkipNightAction}
+                              className="mb-4 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                          >
+                            不发动技能，等待狼人环节
+                          </button>
+                      )}
                       {room.mechanicalWolfLearnedSeatNumber && (
                           <div className="mb-4 rounded-2xl bg-orange-500/20 p-4 text-sm font-bold text-orange-100">
                             你学习了 {room.mechanicalWolfLearnedSeatNumber} 号玩家，当前学习身份是：{room.mechanicalWolfLearnedRoleName || room.mechanicalWolfLearnedRole}。15 秒后自动进入狼人环节。
@@ -1339,7 +1410,7 @@ export default function HomePage() {
 
                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                     {room.players.map((player) => (
-                        <div key={player.id} className="rounded-3xl border border-white/10 bg-black/25 p-4">
+                        <div key={player.id} className={`rounded-3xl border border-white/10 p-4 ${player.alive ? 'bg-black/25' : 'bg-gray-700/40 opacity-60'}`}>
                           <div className="flex items-center justify-between">
                             <div className="text-lg font-bold">
                               {player.seatNumber}. {player.name}
@@ -1349,6 +1420,17 @@ export default function HomePage() {
                       </span>
                           </div>
                           <div className="mt-2 text-xs text-purple-100/60">{player.host ? '房主 / 法官' : '玩家'}</div>
+
+                          {isHost && room.phase === 'VOTING' && player.alive && (
+                              <button
+                                  type="button"
+                                  disabled={voteOutLoading}
+                                  onClick={() => handleVoteOut(player.seatNumber)}
+                                  className="mt-3 w-full rounded-2xl bg-red-500/80 px-3 py-2 text-xs font-bold text-white hover:bg-red-500 disabled:bg-gray-600"
+                              >
+                                标记 {player.seatNumber} 号被放逐
+                              </button>
+                          )}
 
                           {player.id === myPlayerId && room.phase === 'WAITING' && (
                               <div className="mt-4 rounded-2xl bg-white/5 p-3">

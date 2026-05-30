@@ -159,6 +159,18 @@ export const api = {
             body: JSON.stringify({ playerId })
         }),
 
+    skipNightAction: (roomCode: string, playerId: string) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/skip-night-action`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId })
+        }),
+
+    voteOut: (roomCode: string, playerId: string, targetSeatNumber: number) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/vote-out`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, targetSeatNumber })
+        }),
+
     getRoom: (roomCode: string) => request<GameRoom>(`/api/rooms/${roomCode}`),
 
     fillBots: (roomCode: string) =>
