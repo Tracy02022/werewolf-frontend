@@ -58,6 +58,10 @@ export type GameRoom = {
     mechanicalWolfLearnedSeatNumber?: number | null;
     mechanicalWolfLearnedRole?: string | null;
     mechanicalWolfLearnedRoleName?: string | null;
+    mechanicalWolfSkillTargetSeatNumber?: number | null;
+    mechanicalWolfSkillResult?: string | null;
+    mechanicalWolfPoisonUsed?: boolean;
+    mechanicalWolfCanJoinWolfKill?: boolean;
 };
 
 export type RoleLookupResponse = {
@@ -151,6 +155,12 @@ export const api = {
         request<GameRoom>(`/api/rooms/${roomCode}/mechanical-wolf-learn`, {
             method: 'POST',
             body: JSON.stringify({ playerId, targetSeatNumber })
+        }),
+
+    mechanicalWolfSkill: (roomCode: string, playerId: string, skillType: string, targetSeatNumber?: number | null) =>
+        request<GameRoom>(`/api/rooms/${roomCode}/mechanical-wolf-skill`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId, skillType, targetSeatNumber })
         }),
 
     advanceNightAction: (roomCode: string, playerId: string) =>

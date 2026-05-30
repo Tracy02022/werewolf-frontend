@@ -152,7 +152,19 @@ export default function HomePage() {
     return room.players.find((player) => player.id === myPlayerId) || null;
   }, [room, myPlayerId]);
 
-  const isMyRoleWolf = myRole?.team === 'WOLF';
+  const isLearnedMechanicalWolfRoleWolf = Boolean(
+      room?.mechanicalWolfLearnedRole &&
+      roleMap.get(room.mechanicalWolfLearnedRole)?.team === 'WOLF'
+  );
+
+  const canMechanicalWolfJoinWolfKill = Boolean(
+      myRole?.id === 'MECHANICAL_WOLF' && room?.mechanicalWolfCanJoinWolfKill
+  );
+
+  const isMyRoleWolf = Boolean(
+      myRole?.team === 'WOLF' &&
+      (myRole.id !== 'MECHANICAL_WOLF' || canMechanicalWolfJoinWolfKill)
+  );
   const isMyRoleWitch = myRole?.id === 'WITCH';
   const isMyRoleGuard = ['GUARD', 'AWAKENED_GUARD'].includes(myRole?.id || '');
   const isMyRoleSeer = ['SEER', 'SKY_EYE', 'AWAKENED_SEER'].includes(myRole?.id || '');
@@ -611,6 +623,35 @@ export default function HomePage() {
     } finally {
       setMechanicalWolfLoading(false);
     }
+  };
+
+  const handleMechanicalWolfSkill = async (skillType: string, targetSeatNumber?: number | null) => {
+    if (!room || !myPlayerId) return;
+    setMechanicalWolfLoading(true);
+    setError('');
+    try {
+      const updatedRoom = await api.mechanicalWolfSkill(room.roomCode, myPlayerId, skillType, targetSeatNumber || null);
+      setRoom(updatedRoom);
+    } catch (err: any) {
+      setError(err.message || '机械狼技能使用失败');
+    } finally {
+      setMechanicalWolfLoading(false);
+    }
+  };
+
+  const getMechanicalWolfSkillLabel = (roleId?: string | null) => {
+    if (!roleId) return '学习技能';
+    if (roleId === 'WITCH') return '使用女巫毒药';
+    if (roleId === 'GUARD' || roleId === 'AWAKENED_GUARD') return '使用守卫护盾';
+    if (roleId === 'SEER' || roleId === 'SKY_EYE' || roleId === 'AWAKENED_SEER') return '使用预言家查验';
+    if (roleId === 'PSYCHIC') return '使用通灵师查验';
+    if (roleMap.get(roleId)?.team === 'WOLF') return '狼人技能将在小狼全死后进入狼人夜使用';
+    return '当前学习身份没有主动夜间技能';
+  };
+
+  const mechanicalWolfNeedsTarget = (roleId?: string | null) => {
+    if (!roleId) return false;
+    return roleId === 'WITCH' || roleId === 'GUARD' || roleId === 'AWAKENED_GUARD' || roleId === 'SEER' || roleId === 'SKY_EYE' || roleId === 'AWAKENED_SEER' || roleId === 'PSYCHIC';
   };
 
   const handleSkipNightAction = async () => {
@@ -1312,37 +1353,103 @@ export default function HomePage() {
                     <section className="mt-6 rounded-3xl border border-orange-300/20 bg-orange-500/10 p-5 shadow-2xl backdrop-blur">
                       <div className="mb-3 flex items-center gap-2">
                         <Sparkles className="text-orange-200" />
-                        <h2 className="text-2xl font-bold">机械狼学习技能</h2>
+                        <h2 className="text-2xl font-bold">机械狼夜晚行动</h2>
                       </div>
+
                       {!room.mechanicalWolfLearnedSeatNumber && (
-                          <button
-                              type="button"
-                              disabled={skipNightActionLoading}
-                              onClick={handleSkipNightAction}
-                              className="mb-4 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
-                          >
-                            不发动技能，等待狼人环节
-                          </button>
-                      )}
-                      {room.mechanicalWolfLearnedSeatNumber && (
-                          <div className="mb-4 rounded-2xl bg-orange-500/20 p-4 text-sm font-bold text-orange-100">
-                            你学习了 {room.mechanicalWolfLearnedSeatNumber} 号玩家，当前学习身份是：{room.mechanicalWolfLearnedRoleName || room.mechanicalWolfLearnedRole}。15 秒后自动进入狼人环节。
-                          </div>
-                      )}
-                      <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
-                        {room.players.map((player) => (
+                          <>
+                            <p className="text-sm leading-6 text-orange-100/80">
+                              请选择一名玩家学习身份技能。学习后，通灵师验机械狼会看到你学到的身份；预言家会按你学到身份的阵营给出“好人/狼人”。
+                            </p>
                             <button
-                                key={player.id}
                                 type="button"
-                                disabled={mechanicalWolfLoading || !player.alive || player.id === myPlayerId || Boolean(room.mechanicalWolfLearnedSeatNumber)}
-                                onClick={() => handleMechanicalWolfLearn(player.seatNumber)}
-                                className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-orange-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
+                                disabled={skipNightActionLoading}
+                                onClick={handleSkipNightAction}
+                                className="mb-4 mt-3 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
                             >
-                              {player.seatNumber}号
-                              <div className="truncate text-xs font-normal">{player.name}</div>
+                              不发动技能，等待下一环节
                             </button>
-                        ))}
-                      </div>
+                            <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
+                              {room.players.map((player) => (
+                                  <button
+                                      key={player.id}
+                                      type="button"
+                                      disabled={mechanicalWolfLoading || !player.alive || player.id === myPlayerId}
+                                      onClick={() => handleMechanicalWolfLearn(player.seatNumber)}
+                                      className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-orange-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
+                                  >
+                                    {player.seatNumber}号
+                                    <div className="truncate text-xs font-normal">{player.name}</div>
+                                  </button>
+                              ))}
+                            </div>
+                          </>
+                      )}
+
+                      {room.mechanicalWolfLearnedSeatNumber && (
+                          <>
+                            <div className="mb-4 rounded-2xl bg-orange-500/20 p-4 text-sm font-bold text-orange-100">
+                              你学习了 {room.mechanicalWolfLearnedSeatNumber} 号玩家，当前学习身份是：{room.mechanicalWolfLearnedRoleName || room.mechanicalWolfLearnedRole}。
+                              <div className="mt-2 text-xs text-orange-100/80">{getMechanicalWolfSkillLabel(room.mechanicalWolfLearnedRole)}</div>
+                              {room.mechanicalWolfSkillResult && <div className="mt-3 rounded-xl bg-black/25 p-3">{room.mechanicalWolfSkillResult}</div>}
+                            </div>
+
+                            {!room.nightActionCompleted && roleMap.get(room.mechanicalWolfLearnedRole || '')?.team === 'WOLF' && (
+                                <div className="mb-4 rounded-2xl bg-red-500/20 p-4 text-sm font-bold text-red-100">
+                                  你学习的是狼人阵营身份。只有所有其他小狼都出局后，进入狼人夜才会看到击杀号码并可以刀人；当前其他小狼未死完时不会显示击杀号码。
+                                  <button
+                                      type="button"
+                                      disabled={skipNightActionLoading}
+                                      onClick={handleSkipNightAction}
+                                      className="mt-3 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                                  >
+                                    知道了，等待下一环节
+                                  </button>
+                                </div>
+                            )}
+
+                            {!room.nightActionCompleted && !mechanicalWolfNeedsTarget(room.mechanicalWolfLearnedRole) && roleMap.get(room.mechanicalWolfLearnedRole || '')?.team !== 'WOLF' && (
+                                <button
+                                    type="button"
+                                    disabled={skipNightActionLoading}
+                                    onClick={handleSkipNightAction}
+                                    className="mb-4 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                                >
+                                  当前学习身份无主动夜间技能，等待下一环节
+                                </button>
+                            )}
+
+                            {!room.nightActionCompleted && mechanicalWolfNeedsTarget(room.mechanicalWolfLearnedRole) && (
+                                <>
+                                  <button
+                                      type="button"
+                                      disabled={skipNightActionLoading}
+                                      onClick={handleSkipNightAction}
+                                      className="mb-4 rounded-2xl bg-white/15 px-4 py-3 text-sm font-bold hover:bg-white/20 disabled:bg-gray-600"
+                                  >
+                                    不发动技能，等待下一环节
+                                  </button>
+                                  <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
+                                    {room.players.map((player) => (
+                                        <button
+                                            key={player.id}
+                                            type="button"
+                                            disabled={mechanicalWolfLoading || !player.alive || Boolean(room.mechanicalWolfSkillResult) || (room.mechanicalWolfLearnedRole === 'WITCH' && Boolean(room.mechanicalWolfPoisonUsed))}
+                                            onClick={() => handleMechanicalWolfSkill(room.mechanicalWolfLearnedRole || 'SKILL', player.seatNumber)}
+                                            className="rounded-2xl bg-black/30 px-3 py-3 text-sm font-bold hover:bg-orange-500/40 disabled:bg-gray-600/40 disabled:text-gray-300"
+                                        >
+                                          {player.seatNumber}号
+                                          <div className="truncate text-xs font-normal">{player.name}</div>
+                                        </button>
+                                    ))}
+                                  </div>
+                                  {room.mechanicalWolfLearnedRole === 'WITCH' && room.mechanicalWolfPoisonUsed && (
+                                      <div className="mt-3 rounded-2xl bg-gray-500/20 p-3 text-sm font-bold text-gray-100">机械狼学习到的毒药已经使用过。</div>
+                                  )}
+                                </>
+                            )}
+                          </>
+                      )}
                     </section>
                 )}
 
