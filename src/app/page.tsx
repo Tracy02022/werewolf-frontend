@@ -1182,7 +1182,7 @@ export default function HomePage() {
                     </section>
                 )}
 
-                {room.phase === 'NIGHT' && room.currentNightAction === 'WOLF_KILL' && myPlayer?.alive && isMyRoleMechanicalWolf && (
+                {room.phase === 'NIGHT' && myPlayer?.alive && isMyRoleMechanicalWolf && (
                     <section className={`mt-6 rounded-3xl border p-5 shadow-2xl backdrop-blur ${
                         room.mechanicalWolfCanJoinWolfKill
                             ? 'border-red-300/20 bg-red-500/10'
@@ -1195,11 +1195,15 @@ export default function HomePage() {
 
                       {room.mechanicalWolfCanJoinWolfKill ? (
                           <div className="rounded-2xl bg-red-500/20 p-4 text-sm font-bold text-red-100">
-                            你学习了狼人阵营身份，并且其他小狼已经全部出局。你已获得狼人刀人权，请在狼人夜睁眼并选择击杀目标。
+                            你可以在狼人夜睁眼刀人。
+                          </div>
+                      ) : isLearnedMechanicalWolfRoleWolf ? (
+                          <div className="rounded-2xl bg-yellow-500/20 p-4 text-sm font-bold text-yellow-100">
+                            你学习的是狼人阵营身份。只有所有其他小狼都出局后，进入狼人夜才会看到击杀号码并可以刀人；当前其他小狼未死完时不会显示击杀号码。
                           </div>
                       ) : (
-                          <div className="rounded-2xl bg-yellow-500/20 p-4 text-sm font-bold text-yellow-100">
-                            你当前还没有狼人刀人权，请不要在狼人夜睁眼，也不会看到击杀号码牌。
+                          <div className="rounded-2xl bg-white/10 p-4 text-sm font-bold text-purple-100">
+                            你当前学习的不是狼人刀人身份，请按照机械狼技能环节使用已学习的技能。
                           </div>
                       )}
                     </section>
