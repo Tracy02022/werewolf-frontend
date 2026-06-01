@@ -107,8 +107,10 @@ export default function HomePage() {
   const [mechanicalWolfLoading, setMechanicalWolfLoading] = useState(false);
   const [skipNightActionLoading, setSkipNightActionLoading] = useState(false);
   const [voteOutLoading, setVoteOutLoading] = useState(false);
+  const [judgeVoiceEnabled, setJudgeVoiceEnabled] = useState(false);
   const lastJudgeSpeakKeyRef = useRef('');
   const judgeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
 
@@ -285,6 +287,10 @@ export default function HomePage() {
       return;
     }
 
+    // 浏览器和 iOS 会拦截没有用户交互触发的自动声音。
+    // 用户点击“开启法官声音”后，这里才会在每个新阶段自动播报。
+    if (!judgeVoiceEnabled) return;
+
     const shouldAutoSpeak =
         room.phase === 'NIGHT' ||
         room.phase === 'SHERIFF_ELECTION' ||
@@ -302,7 +308,7 @@ export default function HomePage() {
     const text = getJudgeTextForRoom(room);
     const voiceKey = getVoiceKeyForRoom(room);
     judgeSpeak(text, voiceKey);
-  }, [room?.roomCode, room?.phase, room?.round, room?.currentNightAction, room?.firstDayNightReportReleased]);
+  }, [judgeVoiceEnabled, room?.roomCode, room?.phase, room?.round, room?.currentNightAction, room?.firstDayNightReportReleased]);
 
   useEffect(() => {
     if (!room || !myPlayerId || room.phase === 'WAITING') {
@@ -530,6 +536,7 @@ export default function HomePage() {
       };
       audio.onerror = fallbackToAi;
 
+      // 如果后续放入真人 mp3，会优先播放真人录音；没有文件或被浏览器拦截时自动降级为 AI 播报。
       audio.play().catch(fallbackToAi);
     } catch {
       fallbackToAi();
@@ -537,19 +544,41 @@ export default function HomePage() {
   };
 
   const speakWithAi = (text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      setError('当前浏览器不支持语音播报');
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setError('当前浏览器不支持 AI 语音播报');
       return;
     }
 
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
-    utterance.rate = 0.92;
+    utterance.rate = 0.9;
     utterance.pitch = 1;
+    utterance.volume = 1;
 
-    window.speechSynthesis.speak(utterance);
+    const voices = window.speechSynthesis.getVoices();
+    const chineseVoice = voices.find((voice) =>
+        voice.lang?.toLowerCase().startsWith('zh') ||
+        voice.name.includes('Chinese') ||
+        voice.name.includes('中文')
+    );
+    if (chineseVoice) utterance.voice = chineseVoice;
+
+    // 保留引用，避免 React 渲染后 utterance 被回收导致不出声。
+    currentUtteranceRef.current = utterance;
+
+    setTimeout(() => {
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utterance);
+    }, 150);
+  };
+
+  const enableJudgeVoice = () => {
+    setJudgeVoiceEnabled(true);
+    lastJudgeSpeakKeyRef.current = '';
+    speakWithAi('法官声音已开启');
   };
 
   const handleMoveSeat = async (seatNumber: number) => {
@@ -734,13 +763,24 @@ export default function HomePage() {
             <div className="rounded-3xl border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
               <div className="text-sm text-purple-100/70">当前房间</div>
               <div className="mt-1 max-w-[280px] truncate text-lg font-bold">{room?.roomCode || '尚未进入'}</div>
-              <button
-                  type="button"
-                  onClick={() => setShowRulesModal(true)}
-                  className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-indigo-500 px-4 py-2 text-sm font-bold hover:bg-indigo-400"
-              >
-                <BookOpen size={16} /> 游戏规则
-              </button>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                    type="button"
+                    onClick={enableJudgeVoice}
+                    className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-bold ${
+                        judgeVoiceEnabled ? 'bg-green-500 text-white' : 'bg-yellow-400 text-black hover:bg-yellow-300'
+                    }`}
+                >
+                  <Volume2 size={16} /> {judgeVoiceEnabled ? '法官声音已开启' : '开启法官声音'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setShowRulesModal(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-4 py-2 text-sm font-bold hover:bg-indigo-400"
+                >
+                  <BookOpen size={16} /> 游戏规则
+                </button>
+              </div>
             </div>
           </header>
 
